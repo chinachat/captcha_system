@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>验证码管理后台 v2</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .login-box { background: #1e293b; padding: 32px; border-radius: 12px; width: 360px; box-shadow: 0 20px 50px rgba(0,0,0,0.4); }
+    .login-box h2 { text-align: center; margin-bottom: 20px; font-size: 20px; }
+    .login-box input { width: 100%; padding: 11px 14px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 14px; }
+    .login-box button, .btn { padding: 10px 16px; border: none; border-radius: 8px; background: #6366f1; color: white; font-size: 13px; font-weight: 500; cursor: pointer; }
+    .login-box button { width: 100%; }
+    .login-box button:hover, .btn:hover { background: #4f46e5; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; margin-left: 6px; }
+    .btn-danger { background: #dc2626; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-gray { background: #475569; }
+    .btn-gray:hover { background: #334155; }
+    .err { color: #f87171; font-size: 13px; text-align: center; margin-top: 10px; display: none; }
+    .dashboard { display: none; padding: 24px; max-width: 1100px; margin: 0 auto; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px; }
+    .header h1 { font-size: 22px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .card { background: #1e293b; border-radius: 10px; padding: 16px; text-align: center; }
+    .card .num { font-size: 26px; font-weight: 700; color: #a5b4fc; }
+    .card .label { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+    .section { background: #1e293b; border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+    .section h3 { font-size: 15px; margin-bottom: 12px; color: #cbd5e1; display: flex; justify-content: space-between; align-items: center; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #334155; }
+    th { color: #94a3b8; font-weight: 500; }
+    .ok { color: #34d399; } .fail { color: #f87171; }
+    .key-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid #334155; font-size: 13px; }
+    .key-row code { background: #0f172a; padding: 4px 8px; border-radius: 4px; font-size: 12px; word-break: break-all; }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 99px; }
+    .badge-on { background: #065f46; color: #6ee7b7; }
+    .badge-off { background: #7f1d1d; color: #fca5a5; }
+    .form-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .form-row input { flex: 1; min-width: 120px; padding: 8px 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 13px; }
+    a { color: #818cf8; }
+    .meta { font-size: 12px; color: #64748b; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="login-wrap" id="loginView">
+    <div class="login-box">
+      <h2>验证码管理后台 v2</h2>
+      <input type="text" id="username" placeholder="用户名" value="admin">
+      <input type="password" id="password" placeholder="密码" value="admin123">
+      <button onclick="doLogin()">登录</button>
+      <div class="err" id="loginErr"></div>
+    </div>
+  </div>
+
+  <div class="dashboard" id="dashView">
+    <div class="header">
+      <h1>验证码管理后台</h1>
+      <div>
+        <a href="/" style="margin-right:12px;font-size:13px">演示页</a>
+        <button class="btn btn-gray" onclick="logout()">退出</button>
+      </div>
+    </div>
+
+    <div class="cards" id="cards"></div>
+    <div class="meta" id="metaInfo"></div>
+
+    <div class="section">
+      <h3>
+        API Key 管理
+        <button class="btn btn-sm" onclick="showCreateKey()">+ 新建</button>
+      </h3>
+      <div id="createKeyForm" style="display:none" class="form-row">
+        <input id="newKeyName" placeholder="名称（如：官网前端）">
+        <input id="newKeyNote" placeholder="备注（可选）">
+        <button class="btn btn-sm" onclick="createKey()">创建</button>
+        <button class="btn btn-sm btn-gray" onclick="hideCreateKey()">取消</button>
+      </div>
+      <div id="apiKeys"></div>
+    </div>
+
+    <div class="section">
+      <h3>最近验证记录</h3>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>时间</th><th>类型</th><th>结果</th><th>详情</th><th>IP</th></tr></thead>
+          <tbody id="logBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+<script>
+let adminToken = localStorage.getItem("admin_token") || "";
+
+async function api(path, opts = {}) {
+  const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+  if (adminToken) headers["Authorization"] = "Bearer " + adminToken;
+  const res = await fetch(path, Object.assign({}, opts, { headers }));
+  if (res.status === 401) { logout(); throw new Error("未登录"); }
+  return res.json();
+}
+
+async function doLogin() {
+  const err = document.getElementById("loginErr");
+  try {
+    const json = await api("/api/v1/admin/login", {
+      method: "POST",
+      body: JSON.stringify({
+        username: document.getElementById("username").value,
+        password: document.getElementById("password").value
+      })
+    });
+    if (!json.ok) { err.style.display = "block"; err.textContent = json.msg || "登录失败"; return; }
+    adminToken = json.token;
+    localStorage.setItem("admin_token", adminToken);
+    showDash();
+  } catch (e) {
+    err.style.display = "block"; err.textContent = e.message;
+  }
+}
+
+function logout() {
+  adminToken = "";
+  localStorage.removeItem("admin_token");
+  document.getElementById("loginView").style.display = "flex";
+  document.getElementById("dashView").style.display = "none";
+}
+
+function showDash() {
+  document.getElementById("loginView").style.display = "none";
+  document.getElementById("dashView").style.display = "block";
+  loadStats();
+}
+
+function showCreateKey() { document.getElementById("createKeyForm").style.display = "flex"; }
+function hideCreateKey() { document.getElementById("createKeyForm").style.display = "none"; }
+
+async function createKey() {
+  const name = document.getElementById("newKeyName").value.trim() || "新 Key";
+  const note = document.getElementById("newKeyNote").value.trim();
+  const json = await api("/api/v1/admin/keys", { method: "POST", body: JSON.stringify({ name, note }) });
+  if (json.ok) {
+    alert("已创建 Key：\n" + json.data.key + "\n\n请立即复制保存！");
+    hideCreateKey();
+    document.getElementById("newKeyName").value = "";
+    document.getElementById("newKeyNote").value = "";
+    loadStats();
+  } else {
+    alert(json.msg || "创建失败");
+  }
+}
+
+async function toggleKey(key, enable) {
+  const action = enable ? "enable" : "disable";
+  await api(`/api/v1/admin/keys/${encodeURIComponent(key)}/${action}`, { method: "PUT" });
+  loadStats();
+}
+
+async function deleteKey(key) {
+  if (!confirm("确定删除此 API Key？删除后使用该 Key 的客户端将无法访问。")) return;
+  const json = await api(`/api/v1/admin/keys/${encodeURIComponent(key)}`, { method: "DELETE" });
+  if (!json.ok) alert(json.msg || "删除失败");
+  loadStats();
+}
+
+async function loadStats() {
+  try {
+    const json = await api("/api/v1/stats");
+    if (!json.ok) return;
+    const d = json.data;
+    document.getElementById("cards").innerHTML = `
+      <div class="card"><div class="num">${d.total}</div><div class="label">总验证</div></div>
+      <div class="card"><div class="num">${d.success}</div><div class="label">成功</div></div>
+      <div class="card"><div class="num">${d.fail}</div><div class="label">失败</div></div>
+      <div class="card"><div class="num">${d.success_rate}%</div><div class="label">成功率</div></div>
+      <div class="card"><div class="num">${d.slider}</div><div class="label">滑动</div></div>
+      <div class="card"><div class="num">${d.text}</div><div class="label">文字</div></div>
+      <div class="card"><div class="num">${d.today}</div><div class="label">今日</div></div>
+    `;
+    document.getElementById("metaInfo").textContent =
+      `存储: ${d.storage || "sqlite"} · 限流: 生成 ${d.rate_limit?.generate_per_min || 30} 次/分钟/IP`;
+
+    document.getElementById("apiKeys").innerHTML = (d.api_keys || []).map(k => `
+      <div class="key-row">
+        <span class="badge ${k.enabled ? "badge-on" : "badge-off"}">${k.enabled ? "启用" : "禁用"}</span>
+        <strong>${k.name || "-"}</strong>
+        <code>${k.key}</code>
+        <span style="color:#64748b;font-size:12px">${k.note || ""}</span>
+        <span style="margin-left:auto">
+          ${k.enabled
+            ? `<button class="btn btn-sm btn-gray" onclick="toggleKey('${k.key}', false)">禁用</button>`
+            : `<button class="btn btn-sm" onclick="toggleKey('${k.key}', true)">启用</button>`}
+          <button class="btn btn-sm btn-danger" onclick="deleteKey('${k.key}')">删除</button>
+        </span>
+      </div>
+    `).join("") || "<p style='color:#64748b'>暂无 Key</p>";
+
+    document.getElementById("logBody").innerHTML = (d.recent || []).map(r => {
+      const t = new Date(r.created_at * 1000).toLocaleString("zh-CN");
+      return `<tr>
+        <td>${t}</td>
+        <td>${r.type === "slider" ? "滑动" : "文字"}</td>
+        <td class="${r.success ? "ok" : "fail"}">${r.success ? "成功" : "失败"}</td>
+        <td>${r.detail || "-"}</td>
+        <td>${r.ip || "-"}</td>
+      </tr>`;
+    }).join("") || "<tr><td colspan='5' style='text-align:center;color:#64748b'>暂无记录</td></tr>";
+  } catch (e) { console.error(e); }
+}
+
+if (adminToken) showDash();
+else document.getElementById("loginView").style.display = "flex";
+document.getElementById("password").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  captcha:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+      - SECRET_KEY=change-this-to-a-long-random-string
+      - ADMIN_USER=admin
+      - ADMIN_PASS=your-strong-password
+      - DEFAULT_API_KEY=demo-api-key-captcha-2026
+      - RATE_LIMIT_GENERATE=30
+      - CAPTCHA_EXPIRE=120
+      # 启用 Redis 时取消下面两行注释，并启用下方 redis 服务
+      # - REDIS_URL=redis://redis:6379/0
+      - DB_PATH=/data/captcha.db
+    volumes:
+      - captcha_data:/data
+    restart: unless-stopped
+    # depends_on:
+    #   - redis
+
+  # 可选 Redis（取消注释并设置上面的 REDIS_URL）
+  # redis:
+  #   image: docker.m.daocloud.io/library/redis:7-alpine
+  #   restart: unless-stopped
+  #   volumes:
+  #     - redis_data:/data
+
+volumes:
+  captcha_data:
+  # redis_data:

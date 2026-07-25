@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>动态验证码 Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh; padding: 24px; color: #333;
+    }
+    .container {
+      max-width: 420px; margin: 0 auto; background: white;
+      border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.25); padding: 28px;
+    }
+    h1 { text-align: center; font-size: 22px; margin-bottom: 6px; }
+    .sub { text-align: center; color: #888; font-size: 13px; margin-bottom: 20px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .tabs button {
+      flex: 1; padding: 10px; border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 500; cursor: pointer; background: #f3f4f6; color: #374151;
+    }
+    .tabs button.active { background: #4f46e5; color: white; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    .captcha-box {
+      position: relative; width: 320px; height: 160px; max-width: 100%;
+      margin: 0 auto 12px; background: #e5e7eb; border-radius: 8px; overflow: hidden;
+    }
+    .captcha-box img.bg { width: 100%; height: 100%; display: block; object-fit: fill; }
+    .captcha-box img.piece {
+      position: absolute; left: 0; top: 0; pointer-events: none;
+      filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.3));
+    }
+    .slider-track {
+      position: relative; width: 320px; max-width: 100%; height: 44px;
+      margin: 0 auto 12px; background: #f3f4f6; border-radius: 22px; overflow: hidden;
+    }
+    .slider-fill {
+      position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+      background: linear-gradient(90deg, #4f46e5, #7c3aed); border-radius: 22px;
+    }
+    .slider-thumb {
+      position: absolute; left: 0; top: 0; width: 44px; height: 44px;
+      background: white; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      cursor: grab; display: flex; align-items: center; justify-content: center;
+      font-size: 18px; user-select: none; z-index: 2;
+    }
+    .slider-tip {
+      position: absolute; inset: 0; display: flex; align-items: center;
+      justify-content: center; color: #9ca3af; font-size: 13px; pointer-events: none;
+    }
+
+    .btn {
+      width: 100%; padding: 11px; border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 500; cursor: pointer; margin-top: 8px;
+    }
+    .btn-primary { background: #4f46e5; color: white; }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-secondary { background: #f3f4f6; color: #374151; }
+    .btn-row { display: flex; gap: 8px; }
+    .btn-row .btn { flex: 1; margin-top: 0; }
+    .status {
+      margin-top: 14px; padding: 10px; border-radius: 8px; font-size: 13px;
+      text-align: center; display: none;
+    }
+    .status.ok { background: #d1fae5; color: #065f46; display: block; }
+    .status.err { background: #fee2e2; color: #991b1b; display: block; }
+    .api-info {
+      margin-top: 24px; padding: 12px; background: #f8fafc; border-radius: 8px;
+      font-size: 12px; color: #64748b; word-break: break-all;
+    }
+    .api-info code { background: #e2e8f0; padding: 1px 4px; border-radius: 3px; }
+
+    /* ========== 点选弹出框 ========== */
+    .modal-mask {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      z-index: 1000;
+      align-items: center; justify-content: center;
+      padding: 16px;
+      backdrop-filter: blur(2px);
+    }
+    .modal-mask.open { display: flex; }
+    .modal {
+      background: #fff;
+      border-radius: 16px;
+      width: 100%; max-width: 380px;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.35);
+      overflow: hidden;
+      animation: modalIn 0.2s ease-out;
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: translateY(12px) scale(0.98); }
+      to { opacity: 1; transform: none; }
+    }
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px; border-bottom: 1px solid #f1f5f9;
+    }
+    .modal-header h3 { font-size: 16px; font-weight: 600; color: #1e293b; }
+    .modal-close {
+      width: 32px; height: 32px; border: none; border-radius: 8px;
+      background: #f1f5f9; color: #64748b; font-size: 18px; cursor: pointer;
+      line-height: 1;
+    }
+    .modal-close:hover { background: #e2e8f0; color: #0f172a; }
+    .modal-body { padding: 16px; }
+    .click-prompt {
+      text-align: center; font-size: 15px; font-weight: 600; color: #1e293b;
+      margin-bottom: 10px; letter-spacing: 0.5px; line-height: 1.6;
+    }
+    .click-prompt .hl {
+      display: inline-block; min-width: 28px; padding: 2px 6px; margin: 0 2px;
+      background: #eef2ff; color: #4338ca; border-radius: 6px; font-size: 16px;
+    }
+    .click-progress {
+      text-align: center; font-size: 12px; color: #64748b; margin-bottom: 8px;
+    }
+    .click-box {
+      position: relative; width: 320px; height: 180px; max-width: 100%;
+      margin: 0 auto 12px; border-radius: 8px; overflow: hidden;
+      cursor: crosshair; background: #e5e7eb; user-select: none;
+    }
+    .click-box img { width: 100%; height: 100%; display: block; object-fit: fill; pointer-events: none; }
+    .click-marker {
+      position: absolute; width: 28px; height: 28px; margin-left: -14px; margin-top: -14px;
+      border-radius: 50%; background: rgba(79, 70, 229, 0.9); color: white;
+      font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+      pointer-events: none; box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+      border: 2px solid white;
+    }
+    .modal-status {
+      margin-top: 10px; padding: 8px; border-radius: 8px; font-size: 13px;
+      text-align: center; display: none;
+    }
+    .modal-status.ok { background: #d1fae5; color: #065f46; display: block; }
+    .modal-status.err { background: #fee2e2; color: #991b1b; display: block; }
+    .click-entry {
+      text-align: center; padding: 24px 12px;
+    }
+    .click-entry p { color: #64748b; font-size: 13px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>动态验证码系统 Demo</h1>
+    <p class="sub">滑动拼图 · 点选弹出验证</p>
+
+    <div class="tabs">
+      <button class="active" onclick="switchTab('slider')">滑动拼图</button>
+      <button onclick="switchTab('click')">点选验证</button>
+    </div>
+
+    <!-- 滑动 -->
+    <div class="panel active" id="panel-slider">
+      <div class="captcha-box" id="sliderBox">
+        <img class="bg" id="sliderBg" alt="bg" width="320" height="160">
+        <img class="piece" id="sliderPiece" alt="piece">
+      </div>
+      <div class="slider-track" id="sliderTrack">
+        <div class="slider-fill" id="sliderFill"></div>
+        <div class="slider-tip" id="sliderTip">拖动滑块完成拼图</div>
+        <div class="slider-thumb" id="sliderThumb">→</div>
+      </div>
+      <button class="btn btn-secondary" onclick="loadSlider()">刷新验证码</button>
+    </div>
+
+    <!-- 点选入口：点击后弹出模态框 -->
+    <div class="panel" id="panel-click">
+      <div class="click-entry">
+        <p>点击下方按钮，将弹出点选验证码窗口</p>
+        <button class="btn btn-primary" onclick="openClickModal()">打开点选验证</button>
+      </div>
+    </div>
+
+    <div class="status" id="status"></div>
+    <div class="api-info">
+      API Key: <code>{{API_KEY}}</code><br>
+      管理后台: <a href="/admin" style="color:#4f46e5">/admin</a> ·
+      API 文档: <a href="/api/v1/docs" style="color:#4f46e5">/api/v1/docs</a>
+    </div>
+  </div>
+
+  <!-- 点选验证弹出框 -->
+  <div class="modal-mask" id="clickModal" onclick="onMaskClick(event)">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3>安全验证</h3>
+        <button class="modal-close" onclick="closeClickModal()" title="关闭">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="click-prompt" id="clickPrompt">加载中…</div>
+        <div class="click-progress" id="clickProgress"></div>
+        <div class="click-box" id="clickBox">
+          <img id="clickImg" alt="captcha">
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="resetClicks()">重选</button>
+          <button class="btn btn-secondary" onclick="loadClick()">刷新</button>
+          <button class="btn btn-primary" onclick="verifyClick()">提交</button>
+        </div>
+        <div class="modal-status" id="modalStatus"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const API_KEY = "{{API_KEY}}";
+const ORIG_W = 320, ORIG_H = 160, PIECE_BOX = 58;
+const CLICK_ORIG_W = 320, CLICK_ORIG_H = 180;
+
+let sliderToken = null, sliderOffset = 0, dragging = false, startX = 0;
+let sliderTrack = [], sliderStartTs = 0;
+let clickToken = null, clickChars = [], clickPoints = [], clickNeed = 0;
+let clickTimings = [], clickStartTs = 0;
+
+function headers() {
+  return { "Content-Type": "application/json", "X-API-Key": API_KEY };
+}
+function showStatus(msg, ok) {
+  const el = document.getElementById("status");
+  el.textContent = msg;
+  el.className = "status " + (ok ? "ok" : "err");
+  el.style.display = "block";
+}
+function showModalStatus(msg, ok) {
+  const el = document.getElementById("modalStatus");
+  el.textContent = msg;
+  el.className = "modal-status " + (ok ? "ok" : "err");
+  el.style.display = "block";
+}
+function switchTab(name) {
+  document.querySelectorAll(".tabs button").forEach((b, i) => {
+    b.classList.toggle("active", (name === "slider" && i === 0) || (name === "click" && i === 1));
+  });
+  document.getElementById("panel-slider").classList.toggle("active", name === "slider");
+  document.getElementById("panel-click").classList.toggle("active", name === "click");
+  document.getElementById("status").style.display = "none";
+  if (name === "slider") loadSlider();
+}
+
+/* ========== 弹出框 ========== */
+function openClickModal() {
+  document.getElementById("clickModal").classList.add("open");
+  document.body.style.overflow = "hidden";
+  document.getElementById("modalStatus").style.display = "none";
+  loadClick();
+}
+function closeClickModal() {
+  document.getElementById("clickModal").classList.remove("open");
+  document.body.style.overflow = "";
+}
+function onMaskClick(e) {
+  if (e.target.id === "clickModal") closeClickModal();
+}
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") closeClickModal();
+});
+
+/* ========== 滑动 ========== */
+function getScale() {
+  const box = document.getElementById("sliderBox");
+  return (box.getBoundingClientRect().width || ORIG_W) / ORIG_W;
+}
+function loadSlider() {
+  showStatus("加载中...", true);
+  fetch("/api/v1/captcha/slider/generate", { method: "POST", headers: headers() })
+    .then(r => r.json()).then(json => {
+      if (!json.ok) throw new Error(json.msg || "生成失败");
+      const d = json.data;
+      sliderToken = d.token;
+      const box = document.getElementById("sliderBox");
+      const track = document.getElementById("sliderTrack");
+      const bg = document.getElementById("sliderBg");
+      const piece = document.getElementById("sliderPiece");
+      box.style.width = ORIG_W + "px";
+      box.style.height = ORIG_H + "px";
+      track.style.width = ORIG_W + "px";
+      bg.src = d.background;
+      piece.src = d.puzzle;
+      requestAnimationFrame(() => {
+        const scale = getScale();
+        piece.style.width = (PIECE_BOX * scale) + "px";
+        piece.style.height = (PIECE_BOX * scale) + "px";
+        piece.style.top = ((d.puzzle_y || 0) * scale) + "px";
+        piece.style.left = "0px";
+      });
+      resetSlider();
+      showStatus("验证码已加载，请拖动滑块", true);
+    }).catch(e => showStatus("加载失败: " + e.message, false));
+}
+function resetSlider() {
+  sliderOffset = 0; dragging = false;
+  sliderTrack = []; sliderStartTs = 0;
+  document.getElementById("sliderThumb").style.left = "0px";
+  document.getElementById("sliderFill").style.width = "0px";
+  document.getElementById("sliderPiece").style.left = "0px";
+  const tip = document.getElementById("sliderTip");
+  tip.style.opacity = "1"; tip.textContent = "拖动滑块完成拼图"; tip.style.color = "#9ca3af";
+}
+const thumb = document.getElementById("sliderThumb");
+const track = document.getElementById("sliderTrack");
+const fill = document.getElementById("sliderFill");
+const tip = document.getElementById("sliderTip");
+const pieceEl = document.getElementById("sliderPiece");
+thumb.addEventListener("mousedown", startDrag);
+thumb.addEventListener("touchstart", startDrag, { passive: false });
+function startDrag(e) {
+  e.preventDefault(); dragging = true;
+  const cx = e.touches ? e.touches[0].clientX : e.clientX;
+  startX = cx - sliderOffset;
+  sliderStartTs = performance.now();
+  sliderTrack = [{ x: sliderOffset, t: 0 }];
+  document.addEventListener("mousemove", onDrag);
+  document.addEventListener("mouseup", endDrag);
+  document.addEventListener("touchmove", onDrag, { passive: false });
+  document.addEventListener("touchend", endDrag);
+}
+function onDrag(e) {
+  if (!dragging) return; e.preventDefault();
+  const cx = e.touches ? e.touches[0].clientX : e.clientX;
+  const max = Math.max(0, track.getBoundingClientRect().width - 44);
+  let x = Math.max(0, Math.min(cx - startX, max));
+  sliderOffset = x;
+  thumb.style.left = x + "px";
+  fill.style.width = (x + 22) + "px";
+  pieceEl.style.left = x + "px";
+  tip.style.opacity = x > 8 ? "0" : "1";
+  const t = performance.now() - sliderStartTs;
+  const last = sliderTrack[sliderTrack.length - 1];
+  if (!last || Math.abs(last.x - x) >= 1 || t - last.t >= 16) {
+    sliderTrack.push({ x: Math.round(x * 10) / 10, t: Math.round(t) });
+  }
+}
+function endDrag() {
+  if (!dragging) return; dragging = false;
+  document.removeEventListener("mousemove", onDrag);
+  document.removeEventListener("mouseup", endDrag);
+  document.removeEventListener("touchmove", onDrag);
+  document.removeEventListener("touchend", endDrag);
+  if (!sliderToken) return;
+  const scale = getScale();
+  const offsetInOriginal = scale > 0 ? sliderOffset / scale : sliderOffset;
+  const duration_ms = Math.round(performance.now() - sliderStartTs);
+  const trackOriginal = sliderTrack.map(p => ({
+    x: Math.round((p.x / (scale || 1)) * 100) / 100,
+    t: p.t
+  }));
+  fetch("/api/v1/captcha/slider/verify", {
+    method: "POST", headers: headers(),
+    body: JSON.stringify({
+      token: sliderToken,
+      offset_x: Math.round(offsetInOriginal * 100) / 100,
+      duration_ms,
+      track: trackOriginal
+    })
+  }).then(r => r.json()).then(json => {
+    if (json.ok) {
+      tip.textContent = "验证成功 ✓"; tip.style.opacity = "1"; tip.style.color = "#059669";
+      showStatus("滑动验证通过！", true);
+    } else {
+      showStatus(json.msg || "验证失败", false);
+      thumb.style.transition = fill.style.transition = pieceEl.style.transition = "left 0.3s";
+      thumb.style.left = fill.style.width = pieceEl.style.left = "0px";
+      sliderOffset = 0;
+      setTimeout(() => {
+        thumb.style.transition = fill.style.transition = pieceEl.style.transition = "";
+        loadSlider();
+      }, 400);
+    }
+  }).catch(e => showStatus("请求失败: " + e.message, false));
+}
+
+/* ========== 点选（弹窗内） ========== */
+function getClickScale() {
+  const box = document.getElementById("clickBox");
+  const w = box.getBoundingClientRect().width || CLICK_ORIG_W;
+  return w / CLICK_ORIG_W;
+}
+function loadClick() {
+  showModalStatus("加载中...", true);
+  clickPoints = [];
+  clickTimings = [];
+  clickStartTs = 0;
+  clearMarkers();
+  fetch("/api/v1/captcha/click/generate", { method: "POST", headers: headers() })
+    .then(r => r.json()).then(json => {
+      if (!json.ok) throw new Error(json.msg || "生成失败");
+      const d = json.data;
+      clickToken = d.token;
+      clickChars = d.chars || [];
+      clickNeed = d.count || clickChars.length;
+      document.getElementById("clickImg").src = d.image;
+      document.getElementById("clickPrompt").innerHTML =
+        "请依次点击：" + clickChars.map(c => `<span class="hl">${c}</span>`).join(" ");
+      updateClickProgress();
+      showModalStatus("请按顺序点击图中文字", true);
+    }).catch(e => showModalStatus("加载失败: " + e.message, false));
+}
+function updateClickProgress() {
+  document.getElementById("clickProgress").textContent =
+    `已选 ${clickPoints.length} / ${clickNeed}`;
+}
+function clearMarkers() {
+  document.querySelectorAll("#clickBox .click-marker").forEach(el => el.remove());
+}
+function resetClicks() {
+  clickPoints = [];
+  clickTimings = [];
+  clickStartTs = 0;
+  clearMarkers();
+  updateClickProgress();
+  showModalStatus("已清空，请重新点选", true);
+}
+document.getElementById("clickBox").addEventListener("click", function (e) {
+  if (!clickToken || clickPoints.length >= clickNeed) return;
+  const rect = this.getBoundingClientRect();
+  const scale = getClickScale();
+  const dx = e.clientX - rect.left;
+  const dy = e.clientY - rect.top;
+  const ox = dx / scale;
+  const oy = dy / scale;
+  clickPoints.push({ x: Math.round(ox * 10) / 10, y: Math.round(oy * 10) / 10 });
+  if (!clickStartTs) clickStartTs = performance.now();
+  clickTimings.push(Math.round(performance.now() - clickStartTs));
+
+  const marker = document.createElement("div");
+  marker.className = "click-marker";
+  marker.textContent = clickPoints.length;
+  marker.style.left = dx + "px";
+  marker.style.top = dy + "px";
+  this.appendChild(marker);
+  updateClickProgress();
+  if (clickPoints.length >= clickNeed) {
+    showModalStatus("已选满，可点击提交", true);
+  }
+});
+
+function verifyClick() {
+  if (!clickToken) { showModalStatus("请先加载验证码", false); return; }
+  if (clickPoints.length !== clickNeed) {
+    showModalStatus(`请点击 ${clickNeed} 个位置（当前 ${clickPoints.length}）`, false);
+    return;
+  }
+  showModalStatus("校验中…", true);
+  fetch("/api/v1/captcha/click/verify", {
+    method: "POST", headers: headers(),
+    body: JSON.stringify({ token: clickToken, points: clickPoints, timings: clickTimings })
+  }).then(r => r.json()).then(json => {
+    if (json.ok) {
+      showModalStatus("✓ 验证通过！", true);
+      showStatus("✓ 点选验证通过！", true);
+      setTimeout(() => {
+        closeClickModal();
+      }, 800);
+    } else {
+      showModalStatus("✗ " + (json.msg || "验证失败，请重试"), false);
+      setTimeout(loadClick, 1200);
+    }
+  }).catch(e => showModalStatus("✗ 请求失败: " + e.message, false));
+}
+
+loadSlider();
+</script>
+</body>
+</html>
