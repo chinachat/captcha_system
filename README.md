@@ -127,7 +127,8 @@ docker compose version
 
 ```bash
 # 若已有项目目录
-cd /path/to/captcha_system
+git clone https://github.com/chinachat/captcha_system.git
+cd captcha_system
 
 # 确认关键文件存在
 ls -la app.py Dockerfile docker-compose.yml captcha_app templates
@@ -808,13 +809,7 @@ Authorization: Bearer <jwt>
 
 ---
 
-## 十、License
-
-仅供学习与内部集成参考。生产使用请自行评估安全策略并完成加固。
-
----
-
-## 十一、前端接入插件（CaptchaSDK）
+## 十、前端接入插件（CaptchaSDK）
 
 ### 引入
 
@@ -851,3 +846,11 @@ CaptchaSDK.verify({
 - 成功返回 `pass_token`（JWT），业务服务端应校验其签名与过期时间
 
 管理后台「验证码仪表盘」中也可查看接入提示与实时统计。
+
+---
+
+## 十一、License
+
+仅供学习与内部集成参考。生产使用请自行评估安全策略并完成加固。
+
+---
