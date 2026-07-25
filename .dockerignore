@@ -4,4 +4,3 @@ __pycache__
 .git
 *.md
 test.txt
-static
