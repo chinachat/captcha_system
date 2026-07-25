@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir \
 COPY app.py .
 COPY captcha_app/ captcha_app/
 COPY templates/ templates/
+COPY static/ static/
 COPY fonts/ fonts/
 
 ENV HOST=0.0.0.0

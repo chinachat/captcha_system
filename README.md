@@ -811,3 +811,43 @@ Authorization: Bearer <jwt>
 ## 十、License
 
 仅供学习与内部集成参考。生产使用请自行评估安全策略并完成加固。
+
+---
+
+## 十一、前端接入插件（CaptchaSDK）
+
+### 引入
+
+```html
+<script src="https://你的域名/static/captcha-sdk.js"></script>
+```
+
+同域可写：
+
+```html
+<script src="/static/captcha-sdk.js"></script>
+```
+
+### 调用
+
+```js
+// 点选弹窗
+CaptchaSDK.verify({
+  apiKey: "demo-api-key-captcha-2026",
+  type: "click",       // 或 "slider"
+  baseUrl: ""          // 跨域时填 https://captcha.example.com
+}).then(function (passToken) {
+  // 将 passToken 随业务请求提交到后端
+  console.log("pass_token", passToken);
+}).catch(function (err) {
+  console.warn(err.message); // 用户取消或失败
+});
+```
+
+### 说明
+
+- 自动注入样式与弹窗，无需改业务页面布局
+- 已内置轨迹 / 时序采集，与服务端抗自动化策略匹配
+- 成功返回 `pass_token`（JWT），业务服务端应校验其签名与过期时间
+
+管理后台「验证码仪表盘」中也可查看接入提示与实时统计。
