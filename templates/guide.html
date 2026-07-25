@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>验证码系统文档</title>
+  <style>
+    :root {
+      --bg: #0b1220; --sidebar: #0f172a; --panel: #141c2e; --border: #243049;
+      --text: #e8eef9; --muted: #8b9bb8; --accent: #818cf8; --code-bg: #080d18;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.7; min-height: 100vh;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .layout { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: sticky; top: 0; z-index: 20; height: auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
+      .nav { display: flex; flex-wrap: wrap; gap: 4px; }
+      .nav a { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+    }
+    .sidebar {
+      background: var(--sidebar); border-right: 1px solid var(--border);
+      padding: 20px 14px; position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    }
+    .brand { font-size: 15px; font-weight: 700; padding: 4px 10px 14px; }
+    .brand span { color: var(--accent); }
+    .side-links { padding: 0 10px 14px; font-size: 12px; display: flex; flex-wrap: wrap; gap: 10px; }
+    .nav a {
+      display: block; padding: 8px 10px; border-radius: 8px; color: var(--muted);
+      font-size: 13px; margin-bottom: 2px;
+    }
+    .nav a:hover { background: var(--panel); color: var(--text); text-decoration: none; }
+    .nav a.active { background: rgba(99,102,241,.15); color: #c7d2fe; }
+    .main { padding: 28px 36px 80px; max-width: 860px; }
+    @media (max-width: 900px) { .main { padding: 20px 16px 60px; } }
+    .section { margin-bottom: 40px; scroll-margin-top: 20px; }
+    .section > h2 {
+      font-size: 22px; font-weight: 700; margin-bottom: 16px; padding-bottom: 10px;
+      border-bottom: 1px solid var(--border); letter-spacing: -0.3px;
+    }
+    h3 { font-size: 16px; margin: 22px 0 10px; color: #c7d2fe; }
+    h4 { font-size: 14px; margin: 16px 0 8px; color: #a5b4fc; }
+    p { margin: 0 0 12px; color: #cbd5e1; font-size: 14px; }
+    ul { margin: 0 0 14px 1.2em; font-size: 14px; color: #cbd5e1; }
+    li { margin-bottom: 6px; }
+    blockquote {
+      border-left: 3px solid var(--accent); padding: 8px 14px; margin: 12px 0;
+      background: var(--panel); border-radius: 0 8px 8px 0; color: var(--muted); font-size: 13px;
+    }
+    hr { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px; background: var(--code-bg); padding: 1px 6px; border-radius: 4px;
+      color: #c4b5fd;
+    }
+    pre.code {
+      background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px;
+      padding: 14px 16px; overflow-x: auto; margin: 12px 0 16px; font-size: 12px; line-height: 1.55;
+    }
+    pre.code code { background: none; padding: 0; color: #cbd5e1; }
+    .table-wrap { overflow-x: auto; margin: 12px 0 16px; border: 1px solid var(--border); border-radius: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+    th { background: var(--panel); color: var(--muted); font-weight: 500; }
+    tr:last-child td { border-bottom: none; }
+    strong { color: #f1f5f9; font-weight: 600; }
+
+    /* 移动端触摸滚动优化 */
+    .sidebar {
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+    }
+    .nav {
+      -webkit-overflow-scrolling: touch;
+    }
+    @media (max-width: 900px) {
+      .sidebar {
+        overflow-x: auto;
+        overflow-y: auto;
+        touch-action: pan-x pan-y;
+      }
+      .nav {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding-bottom: 10px;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x proximity;
+      }
+      .nav::-webkit-scrollbar { display: none; }
+      .nav a {
+        flex: 0 0 auto;
+        white-space: nowrap;
+        scroll-snap-align: start;
+      }
+      /* 减少滚动时的重绘卡顿 */
+      .main {
+        -webkit-overflow-scrolling: touch;
+      }
+      .section {
+        content-visibility: auto;
+        contain-intrinsic-size: auto 400px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">Captcha <span>Docs</span></div>
+      <div class="side-links">
+        <a href="/">演示</a>
+        <a href="/docs">API说明</a>
+        <a href="/admin">后台</a>
+      </div>
+      <nav class="nav">
+        <a href="#intro">简介</a>
+<a href="#目录结构">目录结构</a>
+<a href="#一-本地部署">一、本地部署</a>
+<a href="#二-docker-部署-详细步骤">二、Docker 部署（详细步骤）</a>
+<a href="#三-环境变量">三、环境变量</a>
+<a href="#四-鉴权说明">四、鉴权说明</a>
+<a href="#五-前端接口文档">五、前端接口文档</a>
+<a href="#六-管理后台-api">六、管理后台 API</a>
+<a href="#七-抗自动化说明">七、抗自动化说明</a>
+<a href="#八-生产建议">八、生产建议</a>
+<a href="#九-常见问题">九、常见问题</a>
+<a href="#十-license">十、License</a>
+<a href="#十一-前端接入插件-captchasdk">十一、前端接入插件（CaptchaSDK）</a>
+      </nav>
+    </aside>
+    <main class="main">
+      <section class="section" id="intro"><h2>动态验证码管理系统 v2.1</h2><p>纯 Python 实现的验证码服务，支持：</p>
+<ul><li><strong>滑动拼图验证码</strong>（服务端生成图片 + 轨迹行为校验）</li><li><strong>点选位置验证码</strong>（依次点击汉字/字母，支持弹出框前端）</li><li><strong>文字验证码</strong>（兼容旧接口）</li><li><strong>多 API Key 管理</strong>、<strong>IP 限流</strong>、<strong>失败锁定</strong></li><li><strong>可选 Redis</strong> 存储 Token / 限流</li><li><strong>管理后台</strong>（统计、日志、Key 管理）</li></ul>
+<p>依赖：Python 3.10+、Pillow、PyJWT（可选 redis）</p>
+<hr></section>
+<section class="section" id="目录结构"><h2>目录结构</h2><pre class="code"><code>captcha_system/
+├── app.py                      # 启动入口
+├── captcha_app/
+│   ├── config.py               # 配置 / 环境变量
+│   ├── utils.py                # JWT、时间、图片 base64
+│   ├── fonts.py                # 中文字体自动加载
+│   ├── db.py                   # SQLite
+│   ├── redis_client.py         # 可选 Redis
+│   ├── rate_limit.py           # IP 限流
+│   ├── anti_bot.py             # 轨迹 / 时序 / 失败锁定
+│   ├── captcha_gen.py          # 图片生成
+│   ├── tokens.py               # Token 与验证日志
+│   ├── api_keys.py             # API Key CRUD
+│   ├── stats.py                # 统计
+│   └── handler.py              # HTTP 路由
+├── templates/
+│   ├── demo.html               # 演示页（滑动 + 点选弹窗）
+│   └── admin.html              # 管理后台
+├── fonts/                      # 可选自备中文字体
+├── Dockerfile
+├── docker-compose.yml
+└── README.md</code></pre>
+<hr></section>
+<section class="section" id="一-本地部署"><h2>一、本地部署</h2><h3>1. 环境要求</h3>
+<ul><li>Python 3.10+</li><li>系统中文字体（推荐）：</li></ul>
+<pre class="code"><code># Debian / Ubuntu
+sudo apt-get update
+sudo apt-get install -y fonts-noto-cjk fonts-wqy-microhei fontconfig
+
+# 或把字体文件放到 captcha_system/fonts/ 目录</code></pre>
+<h3>2. 安装依赖</h3>
+<pre class="code"><code>pip install pillow PyJWT
+# 若使用 Redis：
+pip install redis</code></pre>
+<h3>3. 启动</h3>
+<pre class="code"><code>cd captcha_system
+python3 app.py</code></pre>
+<p>默认监听 <code>0.0.0.0:8080</code>。</p>
+<div class="table-wrap"><table><thead><tr><th>地址</th><th>说明</th></tr></thead><tbody><tr><td>http://127.0.0.1:8080/</td><td>前端演示</td></tr><tr><td>http://127.0.0.1:8080/admin</td><td>管理后台</td></tr><tr><td>http://127.0.0.1:8080/api/v1/docs</td><td>API 文档（JSON）</td></tr><tr><td>http://127.0.0.1:8080/api/v1/health</td><td>健康检查</td></tr></tbody></table></div>
+<p><strong>默认账号</strong></p>
+<div class="table-wrap"><table><thead><tr><th>项目</th><th>值</th></tr></thead><tbody><tr><td>管理员</td><td><code>admin</code> / <code>admin123</code></td></tr><tr><td>API Key</td><td><code>demo-api-key-captcha-2026</code></td></tr></tbody></table></div>
+<blockquote>生产环境务必修改 <code>ADMIN_PASS</code>、<code>SECRET_KEY</code>、<code>DEFAULT_API_KEY</code>。</blockquote>
+<hr></section>
+<section class="section" id="二-docker-部署-详细步骤"><h2>二、Docker 部署（详细步骤）</h2><h3>2.1 前置条件</h3>
+<div class="table-wrap"><table><thead><tr><th>项目</th><th>要求</th></tr></thead><tbody><tr><td>系统</td><td>Linux / macOS / Windows（WSL2 推荐）</td></tr><tr><td>Docker</td><td>20.10+（<code>docker --version</code>）</td></tr><tr><td>Docker Compose</td><td>V2（<code>docker compose version</code>）</td></tr><tr><td>磁盘</td><td>建议预留 ≥ 2GB（含中文字体层）</td></tr><tr><td>端口</td><td>宿主机 <code>8080</code> 未被占用</td></tr></tbody></table></div>
+<p>安装 Docker（Ubuntu 示例）：</p>
+<pre class="code"><code># 官方或系统包均可
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-v2
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER   # 重新登录后生效</code></pre>
+<p>验证：</p>
+<pre class="code"><code>docker run --rm hello-world
+docker compose version</code></pre>
+<hr>
+<h3>2.2 获取代码并进入目录</h3>
+<pre class="code"><code># 若已有项目目录
+cd /path/to/captcha_system
+
+# 确认关键文件存在
+ls -la app.py Dockerfile docker-compose.yml captcha_app templates</code></pre>
+<hr>
+<h3>2.3 修改生产配置（必做）</h3>
+<p>编辑 <code>docker-compose.yml</code> 中的环境变量：</p>
+<pre class="code"><code>environment:
+  - SECRET_KEY=请换成足够长的随机串   # 例如 openssl rand -hex 32
+  - ADMIN_USER=admin
+  - ADMIN_PASS=请换成强密码
+  - DEFAULT_API_KEY=请换成业务用的 Key
+  - RATE_LIMIT_GENERATE=30
+  - CAPTCHA_EXPIRE=120
+  - DB_PATH=/data/captcha.db</code></pre>
+<p>生成密钥示例：</p>
+<pre class="code"><code>openssl rand -hex 32
+# 输出类似：a1b2c3d4e5f6...</code></pre>
+<p>也可在启动时用环境变量覆盖，不必改文件：</p>
+<pre class="code"><code>export SECRET_KEY=$(openssl rand -hex 32)
+export ADMIN_PASS=&#x27;YourStrongPass!2026&#x27;</code></pre>
+<hr>
+<h3>2.4 配置镜像加速（国内网络强烈建议）</h3>
+<p>若构建时出现 <code>TLS handshake timeout</code> / <code>failed to resolve source metadata</code>：</p>
+<pre class="code"><code>sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json &lt;&lt; &#x27;JSON&#x27;
+{
+  &quot;registry-mirrors&quot;: [
+    &quot;https://docker.m.daocloud.io&quot;,
+    &quot;https://docker.1ms.run&quot;,
+    &quot;https://docker.xuanyuan.me&quot;
+  ]
+}
+JSON
+sudo systemctl daemon-reload
+sudo systemctl restart docker</code></pre>
+<p>本仓库 <code>Dockerfile</code> 默认使用：</p>
+<pre class="code"><code>FROM docker.m.daocloud.io/library/python:3.12-slim</code></pre>
+<p>pip 使用清华源；若仍失败，可将第一行改为：</p>
+<pre class="code"><code>FROM registry.cn-hangzhou.aliyuncs.com/library/python:3.12-slim</code></pre>
+<hr>
+<h3>2.5 构建并启动（基础版，仅 SQLite）</h3>
+<pre class="code"><code>cd captcha_system
+
+# 构建镜像并后台启动
+docker compose up -d --build
+
+# 查看状态
+docker compose ps
+
+# 查看日志（确认出现「已启动」）
+docker compose logs -f captcha</code></pre>
+<p>成功日志示例：</p>
+<pre class="code"><code>========================================================
+  动态验证码管理系统 v2.1（模块化）已启动
+  演示页面:  http://127.0.0.1:8080/
+  管理后台:  http://127.0.0.1:8080/admin
+  ...
+  存储: SQLite
+========================================================</code></pre>
+<p>浏览器访问：</p>
+<div class="table-wrap"><table><thead><tr><th>地址</th><th>说明</th></tr></thead><tbody><tr><td>http://服务器IP:8080/</td><td>演示页</td></tr><tr><td>http://服务器IP:8080/admin</td><td>管理后台</td></tr><tr><td>http://服务器IP:8080/api/v1/health</td><td>健康检查</td></tr></tbody></table></div>
+<p>快速探测：</p>
+<pre class="code"><code>curl -s http://127.0.0.1:8080/api/v1/health
+# {&quot;ok&quot;: true, &quot;storage&quot;: &quot;sqlite&quot;, ...}</code></pre>
+<hr>
+<h3>2.6 启用 Redis（生产推荐）</h3>
+<p>Redis 用于 Token 自动过期与多实例共享限流。</p>
+<p><strong>步骤 A — 编辑 <code>docker-compose.yml</code></strong></p>
+<p>取消下列注释（去掉行首 <code>#</code>）：</p>
+<pre class="code"><code>services:
+  captcha:
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+
+  redis:
+    image: docker.m.daocloud.io/library/redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
+volumes:
+  captcha_data:
+  redis_data:</code></pre>
+<p><strong>步骤 B — 重建并启动</strong></p>
+<pre class="code"><code>docker compose up -d --build
+docker compose ps
+docker compose logs -f captcha</code></pre>
+<p>日志中应出现：<code>[INFO] Redis 已连接: redis://redis:6379/0</code>，且 health 中 <code>&quot;storage&quot;: &quot;redis&quot;</code>。</p>
+<pre class="code"><code>curl -s http://127.0.0.1:8080/api/v1/health</code></pre>
+<hr>
+<h3>2.7 仅用 docker 命令（不使用 compose）</h3>
+<pre class="code"><code>cd captcha_system
+
+# 构建
+docker build -t captcha-system:2.1 .
+
+# 运行（数据持久化到命名卷）
+docker volume create captcha_data
+docker run -d --name captcha   -p 8080:8080   -e SECRET_KEY=&quot;$(openssl rand -hex 32)&quot;   -e ADMIN_PASS=&quot;YourStrongPass&quot;   -e DEFAULT_API_KEY=&quot;demo-api-key-captcha-2026&quot;   -e DB_PATH=/data/captcha.db   -v captcha_data:/data   --restart unless-stopped   captcha-system:2.1
+
+docker logs -f captcha</code></pre>
+<hr>
+<h3>2.8 数据持久化说明</h3>
+<div class="table-wrap"><table><thead><tr><th>挂载</th><th>路径</th><th>内容</th></tr></thead><tbody><tr><td>卷 <code>captcha_data</code></td><td>容器内 <code>/data</code></td><td>SQLite 文件 <code>captcha.db</code></td></tr><tr><td>卷 <code>redis_data</code>（可选）</td><td>Redis 数据目录</td><td>Redis 持久化</td></tr></tbody></table></div>
+<p>备份 SQLite：</p>
+<pre class="code"><code>docker compose exec captcha ls -la /data
+docker cp $(docker compose ps -q captcha):/data/captcha.db ./captcha-backup-$(date +%F).db</code></pre>
+<hr>
+<h3>2.9 常用运维命令</h3>
+<pre class="code"><code># 查看运行状态
+docker compose ps
+
+# 实时日志
+docker compose logs -f captcha
+
+# 重启
+docker compose restart captcha
+
+# 停止并删除容器（保留数据卷）
+docker compose down
+
+# 停止并删除容器 + 数据卷（慎用）
+docker compose down -v
+
+# 修改代码或 Dockerfile 后重新构建
+docker compose up -d --build
+
+# 进入容器调试
+docker compose exec captcha bash
+# 容器内：fc-list :lang=zh | head   # 检查中文字体</code></pre>
+<hr>
+<h3>2.10 反向代理（Nginx 示例）</h3>
+<pre class="code"><code>server {
+    listen 80;
+    server_name captcha.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}</code></pre>
+<p>建议同时配置 HTTPS（Let&#x27;s Encrypt / 云证书）。应用会读取 <code>X-Forwarded-For</code> 作为客户端 IP（限流与日志）。</p>
+<hr>
+<h3>2.11 构建失败排查</h3>
+<div class="table-wrap"><table><thead><tr><th>现象</th><th>处理</th></tr></thead><tbody><tr><td><code>TLS handshake timeout</code> 拉基础镜像</td><td>配置 registry-mirrors；或改用阿里云/DaoCloud 基础镜像</td></tr><tr><td><code>pip install</code> 超时</td><td>Dockerfile 已用清华源；检查容器出网</td></tr><tr><td>端口占用 <code>bind: address already in use</code></td><td>修改 compose 中 <code>&quot;8080:8080&quot;</code> 为 <code>&quot;8081:8080&quot;</code></td></tr><tr><td>点选汉字方框</td><td>镜像已装 <code>fonts-noto-cjk</code>；<code>docker compose build --no-cache</code> 重装</td></tr><tr><td>权限 / 卷无法写</td><td>确认 <code>DB_PATH=/data/captcha.db</code> 且挂载了 <code>/data</code></td></tr><tr><td>旧容器配置未生效</td><td><code>docker compose down &amp;&amp; docker compose up -d --build</code></td></tr></tbody></table></div>
+<p>查看完整构建日志：</p>
+<pre class="code"><code>docker compose build --no-cache --progress=plain 2&gt;&amp;1 | tee build.log</code></pre>
+<hr>
+<h3>2.12 资源占用参考</h3>
+<div class="table-wrap"><table><thead><tr><th>组件</th><th>大约内存</th></tr></thead><tbody><tr><td>captcha（含 Noto CJK 字体的进程）</td><td>150–400MB</td></tr><tr><td>redis:7-alpine</td><td>10–30MB</td></tr></tbody></table></div>
+<p>首次构建因下载基础镜像与 <code>fonts-noto-cjk</code>，耗时可能 5–15 分钟，视网络而定。</p>
+<hr></section>
+<section class="section" id="三-环境变量"><h2>三、环境变量</h2><div class="table-wrap"><table><thead><tr><th>变量</th><th>默认值</th><th>说明</th></tr></thead><tbody><tr><td><code>HOST</code></td><td><code>0.0.0.0</code></td><td>监听地址</td></tr><tr><td><code>PORT</code></td><td><code>8080</code></td><td>端口</td></tr><tr><td><code>SECRET_KEY</code></td><td>随机</td><td>JWT 签名密钥（生产请固定）</td></tr><tr><td><code>ADMIN_USER</code></td><td><code>admin</code></td><td>后台用户名</td></tr><tr><td><code>ADMIN_PASS</code></td><td><code>admin123</code></td><td>后台密码</td></tr><tr><td><code>DEFAULT_API_KEY</code></td><td><code>demo-api-key-captcha-2026</code></td><td>默认 API Key</td></tr><tr><td><code>CAPTCHA_EXPIRE</code></td><td><code>120</code></td><td>验证码有效秒数</td></tr><tr><td><code>DB_PATH</code></td><td><code>/tmp/captcha_system.db</code></td><td>SQLite 路径</td></tr><tr><td><code>REDIS_URL</code></td><td>空</td><td>如 <code>redis://127.0.0.1:6379/0</code></td></tr><tr><td><code>RATE_LIMIT_GENERATE</code></td><td><code>30</code></td><td>每 IP 每分钟生成次数上限</td></tr><tr><td><code>SLIDER_MIN_MS</code></td><td><code>280</code></td><td>滑动最短耗时（毫秒）</td></tr><tr><td><code>SLIDER_MIN_TRACK</code></td><td><code>5</code></td><td>滑动轨迹最少采样点</td></tr><tr><td><code>CLICK_MIN_TOTAL_MS</code></td><td><code>600</code></td><td>点选总最短耗时</td></tr><tr><td><code>CLICK_MIN_GAP_MS</code></td><td><code>120</code></td><td>两次点击最小间隔</td></tr><tr><td><code>FAIL_LOCK_THRESHOLD</code></td><td><code>8</code></td><td>连续失败锁定阈值</td></tr><tr><td><code>FAIL_LOCK_SECONDS</code></td><td><code>300</code></td><td>锁定时长（秒）</td></tr></tbody></table></div>
+<hr></section>
+<section class="section" id="四-鉴权说明"><h2>四、鉴权说明</h2><h3>业务接口（验证码生成 / 校验）</h3>
+<p>所有 <code>/api/v1/captcha/*</code> 请求需携带：</p>
+<pre class="code"><code>X-API-Key: &lt;your-api-key&gt;</code></pre>
+<p>或：</p>
+<pre class="code"><code>Authorization: Bearer &lt;your-api-key&gt;</code></pre>
+<h3>管理接口</h3>
+<p>先登录获取 JWT，再携带：</p>
+<pre class="code"><code>Authorization: Bearer &lt;admin-jwt&gt;</code></pre>
+<hr></section>
+<section class="section" id="五-前端接口文档"><h2>五、前端接口文档</h2><p>Base URL：<code>http://127.0.0.1:8080</code> Content-Type：<code>application/json</code></p>
+<p>通用响应：</p>
+<pre class="code"><code>{ &quot;ok&quot;: true/false, &quot;msg&quot;: &quot;...&quot;, &quot;data&quot;: { } }</code></pre>
+<p>限流 / 锁定时 HTTP 状态码为 <strong>429</strong>，body 含 <code>retry_after</code>（秒）。</p>
+<hr>
+<h3>5.1 健康检查</h3>
+<pre class="code"><code>GET /api/v1/health</code></pre>
+<p><strong>响应示例</strong></p>
+<pre class="code"><code>{
+  &quot;ok&quot;: true,
+  &quot;ts&quot;: 1710000000.0,
+  &quot;storage&quot;: &quot;sqlite&quot;,
+  &quot;rate_limit&quot;: 30
+}</code></pre>
+<hr>
+<h3>5.2 滑动拼图 — 生成</h3>
+<pre class="code"><code>POST /api/v1/captcha/slider/generate
+X-API-Key: demo-api-key-captcha-2026</code></pre>
+<p><strong>响应</strong></p>
+<pre class="code"><code>{
+  &quot;ok&quot;: true,
+  &quot;data&quot;: {
+    &quot;token&quot;: &quot;uuid-...&quot;,
+    &quot;background&quot;: &quot;data:image/png;base64,...&quot;,
+    &quot;puzzle&quot;: &quot;data:image/png;base64,...&quot;,
+    &quot;puzzle_y&quot;: 32,
+    &quot;pad&quot;: 8,
+    &quot;width&quot;: 320,
+    &quot;height&quot;: 160,
+    &quot;expires_in&quot;: 120
+  }
+}</code></pre>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td><code>token</code></td><td>一次性校验凭证</td></tr><tr><td><code>background</code></td><td>带缺口的背景图（base64）</td></tr><tr><td><code>puzzle</code></td><td>拼图块（含 8px 内边距）</td></tr><tr><td><code>puzzle_y</code></td><td>拼图块 <strong>CSS top</strong>（原图像素，已减 pad）</td></tr><tr><td><code>width</code> / <code>height</code></td><td>原图尺寸，用于缩放换算</td></tr></tbody></table></div>
+<p><strong>前端注意</strong></p>
+<ul><li>画布逻辑尺寸固定 <strong>320×160</strong></li><li>拼图块尺寸 <strong>58×58</strong>（42 + 2×8）</li><li><code>piece.style.top = puzzle_y * scale</code></li><li><code>scale = 显示宽度 / 320</code></li></ul>
+<hr>
+<h3>5.3 滑动拼图 — 校验</h3>
+<pre class="code"><code>POST /api/v1/captcha/slider/verify
+X-API-Key: demo-api-key-captcha-2026
+Content-Type: application/json</code></pre>
+<p><strong>请求体</strong></p>
+<pre class="code"><code>{
+  &quot;token&quot;: &quot;uuid-...&quot;,
+  &quot;offset_x&quot;: 128.5,
+  &quot;duration_ms&quot;: 650,
+  &quot;track&quot;: [
+    { &quot;x&quot;: 0, &quot;t&quot;: 0 },
+    { &quot;x&quot;: 12.3, &quot;t&quot;: 32 },
+    { &quot;x&quot;: 45.0, &quot;t&quot;: 80 }
+  ]
+}</code></pre>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>必填</th><th>说明</th></tr></thead><tbody><tr><td><code>token</code></td><td>是</td><td>生成接口返回的 token</td></tr><tr><td><code>offset_x</code></td><td>是</td><td>拼图块左上角最终 x（<strong>原图像素</strong>）</td></tr><tr><td><code>duration_ms</code></td><td>强烈建议</td><td>滑动总耗时（毫秒）</td></tr><tr><td><code>track</code></td><td>强烈建议</td><td>轨迹采样，<code>t</code> 为相对起点的毫秒</td></tr></tbody></table></div>
+<p><strong>成功</strong></p>
+<pre class="code"><code>{
+  &quot;ok&quot;: true,
+  &quot;msg&quot;: &quot;验证通过&quot;,
+  &quot;pass_token&quot;: &quot;eyJhbGciOiJIUzI1NiIs...&quot;
+}</code></pre>
+<p><strong>失败</strong></p>
+<pre class="code"><code>{ &quot;ok&quot;: false, &quot;msg&quot;: &quot;验证失败，请重试&quot; }</code></pre>
+<p>或行为异常：</p>
+<pre class="code"><code>{ &quot;ok&quot;: false, &quot;msg&quot;: &quot;操作异常，请重新完成滑动&quot; }</code></pre>
+<p><code>pass_token</code> 为短期 JWT，业务方可自行校验签名与过期时间。</p>
+<hr>
+<h3>5.4 点选验证 — 生成</h3>
+<pre class="code"><code>POST /api/v1/captcha/click/generate
+X-API-Key: demo-api-key-captcha-2026</code></pre>
+<p><strong>响应</strong></p>
+<pre class="code"><code>{
+  &quot;ok&quot;: true,
+  &quot;data&quot;: {
+    &quot;token&quot;: &quot;uuid-...&quot;,
+    &quot;image&quot;: &quot;data:image/png;base64,...&quot;,
+    &quot;prompt&quot;: &quot;请依次点击：天 → 地 → 人&quot;,
+    &quot;chars&quot;: [&quot;天&quot;, &quot;地&quot;, &quot;人&quot;],
+    &quot;count&quot;: 3,
+    &quot;width&quot;: 320,
+    &quot;height&quot;: 180,
+    &quot;expires_in&quot;: 120
+  }
+}</code></pre>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td><code>image</code></td><td>点选底图</td></tr><tr><td><code>chars</code></td><td>需<strong>按顺序</strong>点击的字符</td></tr><tr><td><code>count</code></td><td>需点击次数</td></tr><tr><td><code>width</code> / <code>height</code></td><td>原图尺寸（默认 320×180）</td></tr></tbody></table></div>
+<hr>
+<h3>5.5 点选验证 — 校验</h3>
+<pre class="code"><code>POST /api/v1/captcha/click/verify
+X-API-Key: demo-api-key-captcha-2026
+Content-Type: application/json</code></pre>
+<p><strong>请求体</strong></p>
+<pre class="code"><code>{
+  &quot;token&quot;: &quot;uuid-...&quot;,
+  &quot;points&quot;: [
+    { &quot;x&quot;: 120.0, &quot;y&quot;: 80.5 },
+    { &quot;x&quot;: 200.0, &quot;y&quot;: 95.0 },
+    { &quot;x&quot;: 60.0, &quot;y&quot;: 130.0 }
+  ],
+  &quot;timings&quot;: [0, 320, 710]
+}</code></pre>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>必填</th><th>说明</th></tr></thead><tbody><tr><td><code>token</code></td><td>是</td><td>生成接口 token</td></tr><tr><td><code>points</code></td><td>是</td><td>点击坐标（<strong>原图像素</strong>），顺序与 <code>chars</code> 一致</td></tr><tr><td><code>timings</code></td><td>强烈建议</td><td>每次点击相对第一下的毫秒时间戳</td></tr></tbody></table></div>
+<p>坐标换算示例：</p>
+<pre class="code"><code>const scale = displayWidth / 320;
+const x = (clientX - boxLeft) / scale;
+const y = (clientY - boxTop) / scale;</code></pre>
+<p>点击容差约 <strong>28 像素</strong>（圆心距离）。</p>
+<p><strong>成功 / 失败</strong> 响应格式同滑动接口。</p>
+<hr>
+<h3>5.6 文字验证码（兼容）</h3>
+<pre class="code"><code>POST /api/v1/captcha/text/generate
+POST /api/v1/captcha/text/verify</code></pre>
+<p>校验 body：</p>
+<pre class="code"><code>{ &quot;token&quot;: &quot;...&quot;, &quot;code&quot;: &quot;A3K9&quot; }</code></pre>
+<p>新业务推荐使用点选或滑动接口。</p>
+<hr>
+<h3>5.7 前端接入示例（点选弹窗）</h3>
+<pre class="code"><code>const API_KEY = &quot;demo-api-key-captcha-2026&quot;;
+const headers = {
+  &quot;Content-Type&quot;: &quot;application/json&quot;,
+  &quot;X-API-Key&quot;: API_KEY
+};
+
+// 1. 打开弹窗后生成
+async function openCaptcha() {
+  const res = await fetch(&quot;/api/v1/captcha/click/generate&quot;, {
+    method: &quot;POST&quot;, headers
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.msg);
+  const { token, image, chars, count, width } = json.data;
+  // 显示 image，提示 chars
+  // 收集用户点击 → points[], timings[]
+}
+
+// 2. 提交
+async function submit(token, points, timings) {
+  const res = await fetch(&quot;/api/v1/captcha/click/verify&quot;, {
+    method: &quot;POST&quot;,
+    headers,
+    body: JSON.stringify({ token, points, timings })
+  });
+  const json = await res.json();
+  if (json.ok) {
+    // 将 json.pass_token 交给业务登录/提交接口
+    return json.pass_token;
+  }
+  throw new Error(json.msg);
+}</code></pre>
+<p>滑动接入需额外采集 <code>track</code> 与 <code>duration_ms</code>，详见演示页 <code>templates/demo.html</code>。</p>
+<hr></section>
+<section class="section" id="六-管理后台-api"><h2>六、管理后台 API</h2><h3>6.1 登录</h3>
+<pre class="code"><code>POST /api/v1/admin/login
+Content-Type: application/json
+
+{ &quot;username&quot;: &quot;admin&quot;, &quot;password&quot;: &quot;admin123&quot; }</code></pre>
+<p><strong>响应</strong></p>
+<pre class="code"><code>{ &quot;ok&quot;: true, &quot;token&quot;: &quot;&lt;jwt&gt;&quot;, &quot;msg&quot;: &quot;登录成功&quot; }</code></pre>
+<p>后续请求 Header：<code>Authorization: Bearer &lt;jwt&gt;</code></p>
+<h3>6.2 统计</h3>
+<pre class="code"><code>GET /api/v1/stats
+Authorization: Bearer &lt;jwt&gt;</code></pre>
+<p>返回总次数、成功率、滑动/点选/文字分类、最近 50 条日志、API Key 列表等。</p>
+<h3>6.3 API Key 管理</h3>
+<div class="table-wrap"><table><thead><tr><th>方法</th><th>路径</th><th>说明</th></tr></thead><tbody><tr><td>GET</td><td><code>/api/v1/admin/keys</code></td><td>列出全部 Key</td></tr><tr><td>POST</td><td><code>/api/v1/admin/keys</code></td><td>创建，body: <code>{&quot;name&quot;:&quot;业务名&quot;,&quot;note&quot;:&quot;备注&quot;}</code></td></tr><tr><td>PUT</td><td><code>/api/v1/admin/keys/{key}/enable</code></td><td>启用</td></tr><tr><td>PUT</td><td><code>/api/v1/admin/keys/{key}/disable</code></td><td>禁用</td></tr><tr><td>DELETE</td><td><code>/api/v1/admin/keys/{key}</code></td><td>删除（默认 Key 不可删）</td></tr></tbody></table></div>
+<p>创建响应示例：</p>
+<pre class="code"><code>{
+  &quot;ok&quot;: true,
+  &quot;data&quot;: {
+    &quot;key&quot;: &quot;ak-xxxx&quot;,
+    &quot;name&quot;: &quot;官网&quot;,
+    &quot;note&quot;: &quot;web&quot;
+  }
+}</code></pre>
+<hr></section>
+<section class="section" id="七-抗自动化说明"><h2>七、抗自动化说明</h2><div class="table-wrap"><table><thead><tr><th>能力</th><th>说明</th></tr></thead><tbody><tr><td>滑动轨迹</td><td>最短耗时、最少采样点、线性度、速度异常检测</td></tr><tr><td>点选时序</td><td>总时长、点击间隔</td></tr><tr><td>失败锁定</td><td>同一 IP+Key 连续失败达阈值后临时封禁</td></tr><tr><td>生成限流</td><td>每 IP 每分钟生成次数上限</td></tr><tr><td>图像干扰</td><td>点选字符旋转、噪声线；拼图缺口形状</td></tr><tr><td>Token</td><td>一次性使用 + 默认 120 秒过期</td></tr></tbody></table></div>
+<p>无轨迹/时序数据的校验请求会被拒绝或判定异常。</p>
+<hr></section>
+<section class="section" id="八-生产建议"><h2>八、生产建议</h2><ul><li>修改 <code>ADMIN_PASS</code>、<code>SECRET_KEY</code>、<code>DEFAULT_API_KEY</code></li><li>固定 <code>SECRET_KEY</code>，避免重启后 JWT 全部失效</li><li>启用 Redis（多实例共享 Token 与限流）</li><li>前置 Nginx / Caddy 做 HTTPS 与额外限流</li><li>业务接口校验 <code>pass_token</code> 的 JWT 签名与 <code>exp</code></li><li>安装中文字体，避免点选汉字显示为方框</li></ul>
+<hr></section>
+<section class="section" id="九-常见问题"><h2>九、常见问题</h2><p><strong>Q: 汉字不显示？</strong> 安装 <code>fonts-noto-cjk</code> 或将字体放入 <code>fonts/</code> 目录后重启。</p>
+<p><strong>Q: 滑动对不齐？</strong> 使用接口返回的 <code>puzzle_y</code> 作为块的 <code>top</code>；<code>offset_x</code> 为块左上角原图 x（已按 pad 校正）。</p>
+<p><strong>Q: 点选无成功提示？</strong> 演示页已修复；自建前端请确保提示元素未被 <code>display:none</code> 内联样式盖住。</p>
+<p><strong>Q: <code>name &#x27;uuid&#x27; is not defined</code>？</strong> 请使用当前模块化版本（<code>captcha_app/tokens.py</code> 已包含 <code>import uuid</code>）。</p>
+<hr></section>
+<section class="section" id="十-license"><h2>十、License</h2><p>仅供学习与内部集成参考。生产使用请自行评估安全策略并完成加固。</p>
+<hr></section>
+<section class="section" id="十一-前端接入插件-captchasdk"><h2>十一、前端接入插件（CaptchaSDK）</h2><h3>引入</h3>
+<pre class="code"><code>&lt;script src=&quot;https://你的域名/static/captcha-sdk.js&quot;&gt;&lt;/script&gt;</code></pre>
+<p>同域可写：</p>
+<pre class="code"><code>&lt;script src=&quot;/static/captcha-sdk.js&quot;&gt;&lt;/script&gt;</code></pre>
+<h3>调用</h3>
+<pre class="code"><code>// 点选弹窗
+CaptchaSDK.verify({
+  apiKey: &quot;demo-api-key-captcha-2026&quot;,
+  type: &quot;click&quot;,       // 或 &quot;slider&quot;
+  baseUrl: &quot;&quot;          // 跨域时填 https://captcha.example.com
+}).then(function (passToken) {
+  // 将 passToken 随业务请求提交到后端
+  console.log(&quot;pass_token&quot;, passToken);
+}).catch(function (err) {
+  console.warn(err.message); // 用户取消或失败
+});</code></pre>
+<h3>说明</h3>
+<ul><li>自动注入样式与弹窗，无需改业务页面布局</li><li>已内置轨迹 / 时序采集，与服务端抗自动化策略匹配</li><li>成功返回 <code>pass_token</code>（JWT），业务服务端应校验其签名与过期时间</li></ul>
+<p>管理后台「验证码仪表盘」中也可查看接入提示与实时统计。</p></section>
+    </main>
+  </div>
+<script>
+
+/* ===== 移动端触摸滚动 + 导航高亮优化 ===== */
+(function () {
+  const links = document.querySelectorAll(".nav a[href^='#']");
+  if (!links.length) return;
+
+  const sections = Array.from(document.querySelectorAll("section[id], article[id]"));
+  let ticking = false;
+  let lastId = null;
+
+  function headerOffset() {
+    // sticky 侧栏在移动端占高，阅读线适当下移
+    const side = document.querySelector(".sidebar");
+    if (side && window.matchMedia("(max-width: 900px)").matches) {
+      return Math.min(side.offsetHeight, 120) + 12;
+    }
+    return 60;
+  }
+
+  function setActive() {
+    const y = window.scrollY + headerOffset();
+    let cur = null;
+    for (let i = 0; i < sections.length; i++) {
+      if (sections[i].offsetTop <= y) cur = sections[i].id;
+    }
+    if (cur === lastId) return;
+    lastId = cur;
+    links.forEach(function (a) {
+      const on = a.getAttribute("href") === "#" + cur;
+      a.classList.toggle("active", on);
+      // 移动端：当前项滚入侧栏可视区，避免高亮在屏外
+      if (on && window.matchMedia("(max-width: 900px)").matches) {
+        a.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+      }
+    });
+  }
+
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () {
+      setActive();
+      ticking = false;
+    });
+  }
+
+  // 捕获 scroll（含惯性滚动）与 touchmove 结束
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("touchend", function () {
+    // 惯性滚动结束后再校准一次
+    setTimeout(setActive, 80);
+    setTimeout(setActive, 320);
+  }, { passive: true });
+  window.addEventListener("resize", onScroll, { passive: true });
+
+  // 锚点点击：阻止默认后平滑滚动，并考虑移动端顶栏高度
+  links.forEach(function (a) {
+    a.addEventListener("click", function (e) {
+      const id = a.getAttribute("href").slice(1);
+      const el = document.getElementById(id);
+      if (!el) return;
+      e.preventDefault();
+      const top = el.getBoundingClientRect().top + window.scrollY - headerOffset() + 4;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      // 立即高亮
+      lastId = null;
+      history.replaceState(null, "", "#" + id);
+      setTimeout(setActive, 100);
+    });
+  });
+
+  setActive();
+})();
+
+</script>
+</body>
+</html>

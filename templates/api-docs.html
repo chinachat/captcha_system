@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>验证码 API 调用说明</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --sidebar: #0f172a;
+      --panel: #141c2e;
+      --panel-hover: #1a2438;
+      --border: #243049;
+      --text: #e8eef9;
+      --muted: #8b9bb8;
+      --accent: #818cf8;
+      --accent2: #6366f1;
+      --ok: #34d399;
+      --get: #38bdf8;
+      --post: #34d399;
+      --code-bg: #080d18;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ===== 布局 ===== */
+    .layout {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: 100vh;
+    }
+    @media (max-width: 860px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar {
+        position: sticky; top: 0; z-index: 20;
+        border-right: none; border-bottom: 1px solid var(--border);
+        max-height: none;
+      }
+      .nav { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 8px; }
+      .nav a {
+        padding: 6px 10px; border-radius: 6px; font-size: 12px;
+        border: 1px solid var(--border);
+      }
+      .nav .group-title { width: 100%; margin-top: 4px; }
+    }
+
+    .sidebar {
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      padding: 20px 14px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .brand {
+      font-size: 15px; font-weight: 700; padding: 4px 10px 16px;
+      letter-spacing: -0.2px;
+    }
+    .brand span { color: var(--accent); }
+    .nav .group-title {
+      font-size: 11px; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.06em; padding: 12px 10px 6px; font-weight: 600;
+    }
+    .nav a {
+      display: block; padding: 8px 10px; border-radius: 8px;
+      color: var(--muted); font-size: 13px; margin-bottom: 2px;
+    }
+    .nav a:hover { background: var(--panel); color: var(--text); text-decoration: none; }
+    .nav a.active { background: rgba(99, 102, 241, 0.15); color: #c7d2fe; }
+    .nav .method {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      width: 36px; margin-right: 4px; opacity: 0.9;
+    }
+    .nav .method.get { color: var(--get); }
+    .nav .method.post { color: var(--post); }
+
+    .main { padding: 28px 32px 80px; max-width: 880px; }
+    @media (max-width: 860px) { .main { padding: 20px 16px 60px; } }
+
+    .page-head { margin-bottom: 28px; }
+    .page-head h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; }
+    .page-head p { color: var(--muted); font-size: 14px; }
+    .page-head .links { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; }
+
+    /* ===== 环境卡片 ===== */
+    .env-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    @media (max-width: 600px) { .env-grid { grid-template-columns: 1fr; } }
+    .env-item {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    .env-item .label { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+    .env-item code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px; word-break: break-all; color: #e2e8f0;
+    }
+
+    /* ===== 接口卡片 ===== */
+    .section { margin-bottom: 28px; scroll-margin-top: 24px; }
+    .section > h2 {
+      font-size: 13px; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.08em; margin-bottom: 12px; font-weight: 600;
+    }
+
+    .endpoint {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+    .endpoint-head {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, var(--panel-hover) 0%, var(--panel) 100%);
+    }
+    .tag {
+      font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 5px;
+      letter-spacing: 0.03em;
+    }
+    .tag-get { background: rgba(56, 189, 248, 0.15); color: var(--get); }
+    .tag-post { background: rgba(52, 211, 153, 0.15); color: var(--post); }
+    .path {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px; color: #f1f5f9; flex: 1; min-width: 0; word-break: break-all;
+    }
+    .endpoint-body { padding: 16px; }
+    .desc { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+
+    table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+      margin-bottom: 14px;
+    }
+    th, td {
+      text-align: left; padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    th { color: var(--muted); font-weight: 500; font-size: 12px; }
+    td code {
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 12px; color: #c4b5fd;
+    }
+
+    .tabs {
+      display: flex; gap: 4px; margin-bottom: 0;
+      border-bottom: 1px solid var(--border);
+      padding: 0 2px;
+    }
+    .tabs button {
+      border: none; background: transparent; color: var(--muted);
+      padding: 8px 14px; font-size: 12px; cursor: pointer;
+      border-bottom: 2px solid transparent; margin-bottom: -1px;
+      border-radius: 6px 6px 0 0;
+    }
+    .tabs button:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+    .tabs button.active {
+      color: #c7d2fe; border-bottom-color: var(--accent2); font-weight: 600;
+    }
+
+    .code-panel {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 10px 10px;
+      position: relative;
+    }
+    .code-panel pre {
+      margin: 0; padding: 14px 16px; overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px; line-height: 1.55; color: #cbd5e1;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .block { display: none; }
+    .block.active { display: block; }
+
+    .actions {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      margin-top: 12px; align-items: center;
+    }
+    .btn {
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 7px 14px; font-size: 12px; cursor: pointer;
+      background: var(--panel-hover); color: var(--text);
+    }
+    .btn:hover { border-color: #3b4a6b; background: #1e2a42; }
+    .btn-primary {
+      background: var(--accent2); border-color: var(--accent2); color: #fff;
+    }
+    .btn-primary:hover { filter: brightness(1.08); }
+
+    .result {
+      display: none; margin-top: 12px;
+      background: var(--code-bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 14px;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 12px; color: #94a3b8; max-height: 240px; overflow: auto;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .result.show { display: block; }
+
+    .toast {
+      position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+      background: #065f46; color: #d1fae5; padding: 10px 20px;
+      border-radius: 999px; font-size: 13px; display: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.35); z-index: 100;
+    }
+
+    /* 移动端触摸滚动优化 */
+    .sidebar {
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+    }
+    .nav {
+      -webkit-overflow-scrolling: touch;
+    }
+    @media (max-width: 900px) {
+      .sidebar {
+        overflow-x: auto;
+        overflow-y: auto;
+        touch-action: pan-x pan-y;
+      }
+      .nav {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding-bottom: 10px;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x proximity;
+      }
+      .nav::-webkit-scrollbar { display: none; }
+      .nav a {
+        flex: 0 0 auto;
+        white-space: nowrap;
+        scroll-snap-align: start;
+      }
+      /* 减少滚动时的重绘卡顿 */
+      .main {
+        -webkit-overflow-scrolling: touch;
+      }
+      .section {
+        content-visibility: auto;
+        contain-intrinsic-size: auto 400px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">Captcha <span>API</span></div>
+      <nav class="nav">
+        <div class="group-title">概览</div>
+        <a href="#env" class="active">当前环境</a>
+        <a href="#sdk">接入插件</a>
+
+        <div class="group-title">验证码</div>
+        <a href="#health"><span class="method get">GET</span> health</a>
+        <a href="#slider-gen"><span class="method post">POST</span> slider/generate</a>
+        <a href="#slider-verify"><span class="method post">POST</span> slider/verify</a>
+        <a href="#click-gen"><span class="method post">POST</span> click/generate</a>
+        <a href="#click-verify"><span class="method post">POST</span> click/verify</a>
+
+        <div class="group-title">管理</div>
+        <a href="#admin"><span class="method post">POST</span> admin/login</a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="page-head">
+        <h1>API 调用说明</h1>
+        <p>由当前服务自动生成可复制示例，支持在线试调</p>
+        <div class="links">
+          <a href="/">演示页</a>
+          <a href="/admin">管理后台</a>
+          <a href="/static/captcha-sdk.js">SDK 文件</a>
+          <a href="/api/v1/docs">JSON 文档</a>
+          <a href="/guide">完整文档</a>
+        </div>
+      </header>
+
+      <!-- 环境 -->
+      <section class="section" id="env">
+        <h2>当前环境</h2>
+        <div class="endpoint">
+          <div class="endpoint-body">
+            <div class="env-grid">
+              <div class="env-item">
+                <div class="label">Base URL</div>
+                <code id="baseUrl">—</code>
+              </div>
+              <div class="env-item">
+                <div class="label">默认 API Key</div>
+                <code id="apiKey">{{API_KEY}}</code>
+              </div>
+              <div class="env-item">
+                <div class="label">鉴权 Header</div>
+                <code>X-API-Key: &lt;your-key&gt;</code>
+              </div>
+              <div class="env-item">
+                <div class="label">插件地址</div>
+                <code id="sdkUrl">—</code>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="btn btn-primary" type="button" onclick="copyText(document.getElementById('apiKey').textContent)">复制 API Key</button>
+              <button class="btn" type="button" onclick="copyText(base)">复制 Base URL</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 健康检查 -->
+      <section class="section" id="health">
+        <h2>系统</h2>
+        <article class="endpoint">
+          <div class="endpoint-head">
+            <span class="tag tag-get">GET</span>
+            <span class="path">/api/v1/health</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="desc">健康检查，无需鉴权。用于探活与确认存储后端。</p>
+            <div class="tabs">
+              <button type="button" class="active" data-tab="h-curl" onclick="tab(this)">cURL</button>
+              <button type="button" data-tab="h-js" onclick="tab(this)">JavaScript</button>
+            </div>
+            <div class="code-panel">
+              <div class="block active" id="h-curl"><pre id="pre-h-curl"></pre></div>
+              <div class="block" id="h-js"><pre id="pre-h-js"></pre></div>
+            </div>
+            <div class="actions">
+              <button class="btn" type="button" onclick="copyPre('pre-h-curl')">复制</button>
+              <button class="btn btn-primary" type="button" onclick="tryHealth()">在线试调</button>
+            </div>
+            <div class="result" id="out-health"></div>
+          </div>
+        </article>
+      </section>
+
+      <!-- 滑动 -->
+      <section class="section" id="slider-gen">
+        <h2>滑动拼图</h2>
+        <article class="endpoint">
+          <div class="endpoint-head">
+            <span class="tag tag-post">POST</span>
+            <span class="path">/api/v1/captcha/slider/generate</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="desc">生成滑动拼图。返回 <code>token</code>、<code>background</code>、<code>puzzle</code>、<code>puzzle_y</code>（块 top，已减 pad）。</p>
+            <div class="tabs">
+              <button type="button" class="active" data-tab="sg-curl" onclick="tab(this)">cURL</button>
+              <button type="button" data-tab="sg-js" onclick="tab(this)">JavaScript</button>
+            </div>
+            <div class="code-panel">
+              <div class="block active" id="sg-curl"><pre id="pre-sg-curl"></pre></div>
+              <div class="block" id="sg-js"><pre id="pre-sg-js"></pre></div>
+            </div>
+            <div class="actions">
+              <button class="btn" type="button" onclick="copyPre('pre-sg-curl')">复制</button>
+              <button class="btn btn-primary" type="button" onclick="trySliderGen()">在线试调</button>
+            </div>
+            <div class="result" id="out-sg"></div>
+          </div>
+        </article>
+
+        <article class="endpoint" id="slider-verify">
+          <div class="endpoint-head">
+            <span class="tag tag-post">POST</span>
+            <span class="path">/api/v1/captcha/slider/verify</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="desc">校验滑动结果。需上报轨迹与耗时以通过行为检测。</p>
+            <table>
+              <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><td><code>token</code></td><td>string</td><td>生成接口返回</td></tr>
+                <tr><td><code>offset_x</code></td><td>number</td><td>拼图块左上角 x（原图像素）</td></tr>
+                <tr><td><code>duration_ms</code></td><td>number</td><td>滑动耗时（毫秒）</td></tr>
+                <tr><td><code>track</code></td><td>array</td><td><code>[{x, t}, ...]</code> 轨迹采样</td></tr>
+              </tbody>
+            </table>
+            <div class="tabs">
+              <button type="button" class="active" data-tab="sv-curl" onclick="tab(this)">cURL</button>
+              <button type="button" data-tab="sv-js" onclick="tab(this)">JavaScript</button>
+            </div>
+            <div class="code-panel">
+              <div class="block active" id="sv-curl"><pre id="pre-sv-curl"></pre></div>
+              <div class="block" id="sv-js"><pre id="pre-sv-js"></pre></div>
+            </div>
+            <div class="actions">
+              <button class="btn" type="button" onclick="copyPre('pre-sv-curl')">复制</button>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <!-- 点选 -->
+      <section class="section" id="click-gen">
+        <h2>点选验证</h2>
+        <article class="endpoint">
+          <div class="endpoint-head">
+            <span class="tag tag-post">POST</span>
+            <span class="path">/api/v1/captcha/click/generate</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="desc">生成点选图。返回 <code>image</code>、<code>chars</code>（需按序点击）、<code>prompt</code>、<code>token</code>。</p>
+            <div class="tabs">
+              <button type="button" class="active" data-tab="cg-curl" onclick="tab(this)">cURL</button>
+              <button type="button" data-tab="cg-js" onclick="tab(this)">JavaScript</button>
+            </div>
+            <div class="code-panel">
+              <div class="block active" id="cg-curl"><pre id="pre-cg-curl"></pre></div>
+              <div class="block" id="cg-js"><pre id="pre-cg-js"></pre></div>
+            </div>
+            <div class="actions">
+              <button class="btn" type="button" onclick="copyPre('pre-cg-curl')">复制</button>
+              <button class="btn btn-primary" type="button" onclick="tryClickGen()">在线试调</button>
+            </div>
+            <div class="result" id="out-cg"></div>
+          </div>
+        </article>
+
+        <article class="endpoint" id="click-verify">
+          <div class="endpoint-head">
+            <span class="tag tag-post">POST</span>
+            <span class="path">/api/v1/captcha/click/verify</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="desc">校验点击坐标。坐标为原图像素；容差约 28px。</p>
+            <table>
+              <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><td><code>token</code></td><td>string</td><td>生成接口返回</td></tr>
+                <tr><td><code>points</code></td><td>array</td><td><code>[{x, y}, ...]</code> 与 chars 顺序一致</td></tr>
+                <tr><td><code>timings</code></td><td>array</td><td>各次点击相对毫秒</td></tr>
+              </tbody>
+            </table>
+            <div class="tabs">
+              <button type="button" class="active" data-tab="cv-curl" onclick="tab(this)">cURL</button>
+              <button type="button" data-tab="cv-js" onclick="tab(this)">JavaScript</button>
+            </div>
+            <div class="code-panel">
+              <div class="block active" id="cv-curl"><pre id="pre-cv-curl"></pre></div>
+              <div class="block" id="cv-js"><pre id="pre-cv-js"></pre></div>
+            </div>
+            <div class="actions">
+              <button class="btn" type="button" onclick="copyPre('pre-cv-curl')">复制</button>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <!-- SDK -->
+      <section class="section" id="sdk">
+        <h2>前端插件</h2>
+        <article class="endpoint">
+          <div class="endpoint-head">
+            <span class="path" style="font-size:14px">CaptchaSDK · 一行接入弹窗验证</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="desc">自动注入样式与弹窗，内置轨迹/时序采集。成功返回 <code>pass_token</code>。</p>
+            <div class="tabs">
+              <button type="button" class="active" data-tab="sdk-html" onclick="tab(this)">引入</button>
+              <button type="button" data-tab="sdk-js" onclick="tab(this)">调用</button>
+            </div>
+            <div class="code-panel">
+              <div class="block active" id="sdk-html"><pre id="pre-sdk-html"></pre></div>
+              <div class="block" id="sdk-js"><pre id="pre-sdk-js"></pre></div>
+            </div>
+            <div class="actions">
+              <button class="btn" type="button" onclick="copyPre('pre-sdk-html')">复制引入</button>
+              <button class="btn" type="button" onclick="copyPre('pre-sdk-js')">复制调用</button>
+              <button class="btn btn-primary" type="button" onclick="trySdk()">页面内试调</button>
+            </div>
+            <div class="result" id="out-sdk"></div>
+          </div>
+        </article>
+      </section>
+
+      <!-- 管理 -->
+      <section class="section" id="admin">
+        <h2>管理接口</h2>
+        <article class="endpoint">
+          <div class="endpoint-head">
+            <span class="tag tag-post">POST</span>
+            <span class="path">/api/v1/admin/login</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="desc">管理员登录，返回 JWT。后续管理接口使用 <code>Authorization: Bearer &lt;jwt&gt;</code>。</p>
+            <div class="tabs">
+              <button type="button" class="active" data-tab="ad-curl" onclick="tab(this)">cURL</button>
+            </div>
+            <div class="code-panel">
+              <div class="block active" id="ad-curl"><pre id="pre-admin-curl"></pre></div>
+            </div>
+            <div class="actions">
+              <button class="btn" type="button" onclick="copyPre('pre-admin-curl')">复制</button>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast">已复制到剪贴板</div>
+
+<script>
+const API_KEY = "{{API_KEY}}";
+const base = location.origin;
+document.getElementById("baseUrl").textContent = base;
+document.getElementById("sdkUrl").textContent = base + "/static/captcha-sdk.js";
+
+function fill() {
+  const K = API_KEY, B = base;
+
+  document.getElementById("pre-h-curl").textContent =
+`curl -s ${B}/api/v1/health`;
+
+  document.getElementById("pre-h-js").textContent =
+`fetch("${B}/api/v1/health")
+  .then(r => r.json())
+  .then(console.log);`;
+
+  document.getElementById("pre-sg-curl").textContent =
+`curl -s -X POST ${B}/api/v1/captcha/slider/generate \\
+  -H "X-API-Key: ${K}"`;
+
+  document.getElementById("pre-sg-js").textContent =
+`const res = await fetch("${B}/api/v1/captcha/slider/generate", {
+  method: "POST",
+  headers: { "X-API-Key": "${K}" }
+});
+const json = await res.json();
+// json.data: token, background, puzzle, puzzle_y`;
+
+  document.getElementById("pre-sv-curl").textContent =
+`curl -s -X POST ${B}/api/v1/captcha/slider/verify \\
+  -H "X-API-Key: ${K}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "token": "<generate 返回的 token>",
+    "offset_x": 128.5,
+    "duration_ms": 650,
+    "track": [{"x":0,"t":0},{"x":40,"t":80},{"x":128.5,"t":650}]
+  }'`;
+
+  document.getElementById("pre-sv-js").textContent =
+`await fetch("${B}/api/v1/captcha/slider/verify", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-API-Key": "${K}"
+  },
+  body: JSON.stringify({
+    token,
+    offset_x: 128.5,
+    duration_ms: 650,
+    track: [{ x: 0, t: 0 }, { x: 40, t: 80 }, { x: 128.5, t: 650 }]
+  })
+}).then(r => r.json()); // → pass_token`;
+
+  document.getElementById("pre-cg-curl").textContent =
+`curl -s -X POST ${B}/api/v1/captcha/click/generate \\
+  -H "X-API-Key: ${K}"`;
+
+  document.getElementById("pre-cg-js").textContent =
+`const res = await fetch("${B}/api/v1/captcha/click/generate", {
+  method: "POST",
+  headers: { "X-API-Key": "${K}" }
+});
+const json = await res.json();
+// json.data: token, image, chars, prompt`;
+
+  document.getElementById("pre-cv-curl").textContent =
+`curl -s -X POST ${B}/api/v1/captcha/click/verify \\
+  -H "X-API-Key: ${K}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "token": "<generate 返回的 token>",
+    "points": [{"x":120,"y":80},{"x":200,"y":95},{"x":60,"y":130}],
+    "timings": [0, 320, 710]
+  }'`;
+
+  document.getElementById("pre-cv-js").textContent =
+`await fetch("${B}/api/v1/captcha/click/verify", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-API-Key": "${K}"
+  },
+  body: JSON.stringify({
+    token,
+    points: [{ x: 120, y: 80 }, { x: 200, y: 95 }, { x: 60, y: 130 }],
+    timings: [0, 320, 710]
+  })
+}).then(r => r.json()); // → pass_token`;
+
+  document.getElementById("pre-sdk-html").textContent =
+`<script src="${B}/static/captcha-sdk.js"><\/script>`;
+
+  document.getElementById("pre-sdk-js").textContent =
+`CaptchaSDK.verify({
+  apiKey: "${K}",
+  type: "click",   // 或 "slider"
+  baseUrl: "${B}"
+}).then(passToken => {
+  // 提交给业务后端
+  console.log(passToken);
+}).catch(console.warn);`;
+
+  document.getElementById("pre-admin-curl").textContent =
+`curl -s -X POST ${B}/api/v1/admin/login \\
+  -H "Content-Type: application/json" \\
+  -d '{"username":"admin","password":"admin123"}'`;
+}
+
+function tab(btn) {
+  const body = btn.closest(".endpoint-body");
+  body.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  const id = btn.getAttribute("data-tab");
+  body.querySelectorAll(".block").forEach(b => b.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+
+function copyText(t) {
+  navigator.clipboard.writeText(t).then(() => {
+    const el = document.getElementById("toast");
+    el.style.display = "block";
+    setTimeout(() => { el.style.display = "none"; }, 1400);
+  });
+}
+function copyPre(id) {
+  copyText(document.getElementById(id).textContent);
+}
+
+function showOut(id, data) {
+  const el = document.getElementById(id);
+  el.classList.add("show");
+  el.textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+}
+
+async function tryHealth() {
+  showOut("out-health", await (await fetch(base + "/api/v1/health")).json());
+}
+async function trySliderGen() {
+  const j = await (await fetch(base + "/api/v1/captcha/slider/generate", {
+    method: "POST", headers: { "X-API-Key": API_KEY }
+  })).json();
+  if (j.data) {
+    j.data.background = String(j.data.background || "").slice(0, 40) + "…";
+    j.data.puzzle = String(j.data.puzzle || "").slice(0, 40) + "…";
+  }
+  showOut("out-sg", j);
+}
+async function tryClickGen() {
+  const j = await (await fetch(base + "/api/v1/captcha/click/generate", {
+    method: "POST", headers: { "X-API-Key": API_KEY }
+  })).json();
+  if (j.data) j.data.image = String(j.data.image || "").slice(0, 40) + "…";
+  showOut("out-cg", j);
+}
+function trySdk() {
+  function run() {
+    CaptchaSDK.verify({ apiKey: API_KEY, type: "click", baseUrl: base })
+      .then(tok => showOut("out-sdk", { ok: true, pass_token: tok }))
+      .catch(e => showOut("out-sdk", { ok: false, msg: e.message }));
+  }
+  if (window.CaptchaSDK) run();
+  else {
+    const s = document.createElement("script");
+    s.src = base + "/static/captcha-sdk.js";
+    s.onload = run;
+    document.head.appendChild(s);
+  }
+}
+
+/* 侧栏高亮 */
+
+fill();
+
+/* ===== 移动端触摸滚动 + 导航高亮优化 ===== */
+(function () {
+  const links = document.querySelectorAll(".nav a[href^='#']");
+  if (!links.length) return;
+
+  const sections = Array.from(document.querySelectorAll("section[id], article[id]"));
+  let ticking = false;
+  let lastId = null;
+
+  function headerOffset() {
+    // sticky 侧栏在移动端占高，阅读线适当下移
+    const side = document.querySelector(".sidebar");
+    if (side && window.matchMedia("(max-width: 900px)").matches) {
+      return Math.min(side.offsetHeight, 120) + 12;
+    }
+    return 60;
+  }
+
+  function setActive() {
+    const y = window.scrollY + headerOffset();
+    let cur = null;
+    for (let i = 0; i < sections.length; i++) {
+      if (sections[i].offsetTop <= y) cur = sections[i].id;
+    }
+    if (cur === lastId) return;
+    lastId = cur;
+    links.forEach(function (a) {
+      const on = a.getAttribute("href") === "#" + cur;
+      a.classList.toggle("active", on);
+      // 移动端：当前项滚入侧栏可视区，避免高亮在屏外
+      if (on && window.matchMedia("(max-width: 900px)").matches) {
+        a.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+      }
+    });
+  }
+
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () {
+      setActive();
+      ticking = false;
+    });
+  }
+
+  // 捕获 scroll（含惯性滚动）与 touchmove 结束
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("touchend", function () {
+    // 惯性滚动结束后再校准一次
+    setTimeout(setActive, 80);
+    setTimeout(setActive, 320);
+  }, { passive: true });
+  window.addEventListener("resize", onScroll, { passive: true });
+
+  // 锚点点击：阻止默认后平滑滚动，并考虑移动端顶栏高度
+  links.forEach(function (a) {
+    a.addEventListener("click", function (e) {
+      const id = a.getAttribute("href").slice(1);
+      const el = document.getElementById(id);
+      if (!el) return;
+      e.preventDefault();
+      const top = el.getBoundingClientRect().top + window.scrollY - headerOffset() + 4;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      // 立即高亮
+      lastId = null;
+      history.replaceState(null, "", "#" + id);
+      setTimeout(setActive, 100);
+    });
+  });
+
+  setActive();
+})();
+
+</script>
+</body>
+</html>

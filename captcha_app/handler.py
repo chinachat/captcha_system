@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 from . import config
+import mimetypes
 from .anti_bot import (
     analyze_click_timing,
     analyze_slider_track,
@@ -106,6 +107,10 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             self._serve_demo()
         elif path in ("/admin", "/admin/"):
             self._serve_admin_page()
+        elif path in ("/docs", "/api-docs"):
+            self._serve_call_docs()
+        elif path in ("/guide", "/readme"):
+            self._serve_guide()
         elif path == "/api/v1/health":
             self._send(200, {
                 "ok": True,
@@ -121,6 +126,8 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, "data": list_api_keys()})
         elif path == "/api/v1/docs":
             self._serve_api_docs()
+        elif path.startswith("/static/"):
+            self._serve_static(path[len("/static/"):])
         else:
             self._json_error("Not Found", 404)
 
@@ -464,6 +471,26 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         key = create_api_key(name, note)
         self._send(200, {"ok": True, "data": {"key": key, "name": name, "note": note}})
 
+
+
+    def _serve_guide(self):
+        path = os.path.join(config.TEMPLATE_DIR, "guide.html")
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            self._send(200, content, "text/html; charset=utf-8")
+        else:
+            self._send(200, "<h1>guide.html missing</h1>", "text/html")
+
+    def _serve_call_docs(self):
+        path = os.path.join(config.TEMPLATE_DIR, "api-docs.html")
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read().replace("{{API_KEY}}", config.DEFAULT_API_KEY)
+            self._send(200, content, "text/html; charset=utf-8")
+        else:
+            self._send(200, "<h1>api-docs.html missing</h1>", "text/html")
+
     def _serve_demo(self):
         path = os.path.join(config.TEMPLATE_DIR, "demo.html")
         if os.path.exists(path):
@@ -480,6 +507,36 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                 self._send(200, f.read(), "text/html; charset=utf-8")
         else:
             self._send(200, "<h1>admin.html missing</h1>", "text/html")
+
+
+    def _serve_static(self, rel):
+        # 防止路径穿越
+        rel = rel.replace("\\", "/").lstrip("/")
+        if ".." in rel.split("/"):
+            self._json_error("Forbidden", 403)
+            return
+        root = os.path.join(os.path.dirname(config.TEMPLATE_DIR), "static")
+        fpath = os.path.normpath(os.path.join(root, rel))
+        if not fpath.startswith(os.path.normpath(root)):
+            self._json_error("Forbidden", 403)
+            return
+        if not os.path.isfile(fpath):
+            self._json_error("Not Found", 404)
+            return
+        ctype, _ = mimetypes.guess_type(fpath)
+        if not ctype:
+            ctype = "application/octet-stream"
+        if fpath.endswith(".js"):
+            ctype = "application/javascript; charset=utf-8"
+        with open(fpath, "rb") as f:
+            data = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "public, max-age=3600")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _serve_api_docs(self):
         self._send(200, {
