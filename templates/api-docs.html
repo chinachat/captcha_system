@@ -54,6 +54,14 @@
     }
     .footer a { color: var(--accent); }
     .footer a:hover { text-decoration: underline; }
+    .sf-actions { display: flex; gap: 8px; align-items: center; }
+    .sf-gh {
+      display: flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 10px;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .sf-gh:hover { color: var(--text); text-decoration: none; background: var(--panel-hover); }
+    .theme-toggle-static { position: static; }
     @media (max-width: 600px) {
       .footer { flex-direction: column; text-align: center; gap: 8px; padding: 16px; }
       .theme-toggle { top: 10px; right: 10px; width: 32px; height: 32px; font-size: 16px; }
@@ -561,10 +569,13 @@
 
   <div class="footer">
     <div>
-      <a href="https://github.com/chinachat/captcha_system" target="_blank">GitHub 仓库</a>
-      &middot; <a href="https://github.com/chinachat/captcha_system/blob/main/LICENSE" target="_blank">MIT 开源协议</a>
+      &copy; 2026 chinachat
+      &middot; <a href="https://github.com/chinachat/captcha_system/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
     </div>
-    <div>&copy; 2026 chinachat. 保留所有权利。</div>
+    <div class="sf-actions">
+      <a class="sf-gh" href="https://github.com/chinachat/captcha_system" target="_blank" rel="noopener" title="GitHub 仓库" aria-label="GitHub 仓库"><svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+      <button type="button" class="theme-toggle theme-toggle-static" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题">☀</button>
+    </div>
   </div>
 
   <div class="toast" id="toast">已复制到剪贴板</div>
@@ -661,7 +672,7 @@ const json = await res.json();
 }).then(r => r.json()); // → pass_token`;
 
   document.getElementById("pre-sdk-html").textContent =
-`<script src="${B}/static/captcha-sdk.js"><\/script>`;
+`<script src="${B}/static/captcha-sdk.js"><\\/script>`;
 
   document.getElementById("pre-sdk-js").textContent =
 `CaptchaSDK.verify({
@@ -818,30 +829,29 @@ fill();
 })();
 
 
-/* ===== 主题切换 ===== */
-(function() {
-  const btn = document.getElementById("themeBtn");
-  const saved = localStorage.getItem("captcha-theme");
-  const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
-  if (saved === "light" || (!saved && prefersLight)) {
-    document.documentElement.setAttribute("data-theme", "light");
-    if (btn) btn.textContent = "☽";
+/* ===== 主题切换（明暗，两个切换按钮图标保持同步） ===== */
+(function () {
+  var KEY = "captcha-theme";
+  var DEFAULT_THEME = "dark";
+  function apply(theme) {
+    var root = document.documentElement;
+    if (theme === DEFAULT_THEME) root.removeAttribute("data-theme");
+    else root.setAttribute("data-theme", theme);
+    var icon = theme === "dark" ? "☀" : "☽";
+    var btns = document.querySelectorAll(".theme-toggle");
+    for (var i = 0; i < btns.length; i++) btns[i].textContent = icon;
   }
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) {}
+  var theme = saved || ((window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : DEFAULT_THEME);
+  apply(theme);
+  window.toggleTheme = function () {
+    var cur = document.documentElement.getAttribute("data-theme") || DEFAULT_THEME;
+    var next = cur === "dark" ? "light" : "dark";
+    try { localStorage.setItem(KEY, next); } catch (e) {}
+    apply(next);
+  };
 })();
-function toggleTheme() {
-  const html = document.documentElement;
-  const btn = document.getElementById("themeBtn");
-  const isLight = html.getAttribute("data-theme") === "light";
-  if (isLight) {
-    html.removeAttribute("data-theme");
-    localStorage.setItem("captcha-theme", "dark");
-    if (btn) btn.textContent = "☀";
-  } else {
-    html.setAttribute("data-theme", "light");
-    localStorage.setItem("captcha-theme", "light");
-    if (btn) btn.textContent = "☽";
-  }
-}
 </script>
 </body>
 </html>
