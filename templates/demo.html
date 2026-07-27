@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
   <title>动态验证码 Demo</title>
   <style>
@@ -56,9 +56,9 @@
     .panel.active { display: block; }
 
     .captcha-box {
-      position: relative; width: 320px; height: 160px; max-width: 100%;
+      position: relative; width: 320px; aspect-ratio: 2 / 1; max-width: 100%;
       margin: 0 auto 12px; background: var(--box-bg); border-radius: 8px; overflow: hidden;
-      touch-action: none;
+      touch-action: none; -webkit-tap-highlight-color: transparent;
     }
     .captcha-box img.bg { width: 100%; height: 100%; display: block; object-fit: fill; }
     .captcha-box img.piece {
@@ -123,8 +123,10 @@
       background: var(--panel);
       border-radius: 16px;
       width: 100%; max-width: 380px;
+      max-height: calc(100% - 32px);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       box-shadow: 0 25px 60px rgba(0,0,0,0.35);
-      overflow: hidden;
       animation: modalIn 0.2s ease-out;
     }
     @keyframes modalIn {
@@ -155,10 +157,10 @@
       text-align: center; font-size: 12px; color: var(--muted); margin-bottom: 8px;
     }
     .click-box {
-      position: relative; width: 320px; height: 180px; max-width: 100%;
+      position: relative; width: 320px; aspect-ratio: 16 / 9; max-width: 100%;
       margin: 0 auto 12px; border-radius: 8px; overflow: hidden;
       cursor: crosshair; background: var(--box-bg); user-select: none;
-      touch-action: none;
+      touch-action: none; -webkit-tap-highlight-color: transparent;
     }
     .click-box img { width: 100%; height: 100%; display: block; object-fit: fill; pointer-events: none; }
     .click-marker {
@@ -207,6 +209,13 @@
       width: 34px; height: 34px; border-radius: 9px; cursor: pointer; font-size: 15px;
       border: 1px solid var(--border); background: var(--btn-bg); color: var(--text);
       display: flex; align-items: center; justify-content: center;
+    }
+
+    /* 窄屏：减小页面与卡片内边距，给验证图让出宽度 */
+    @media (max-width: 480px) {
+      body { padding: 12px; }
+      .container { padding: 18px; border-radius: 12px; }
+      h1 { font-size: 19px; }
     }
   </style>
 </head>
@@ -289,6 +298,7 @@ const CLICK_ORIG_W = 320, CLICK_ORIG_H = 180;
 
 let sliderToken = null, sliderOffset = 0, dragging = false, startX = 0;
 let sliderTrack = [], sliderStartTs = 0;
+let sliderPuzzleY = 0; // 当前拼图块的 top（原图像素），供布局重算使用
 let clickToken = null, clickChars = [], clickPoints = [], clickNeed = 0;
 let clickTimings = [], clickStartTs = 0;
 
@@ -349,10 +359,11 @@ function updateSliderLayout() {
   if (cachedSliderScale <= 0) cachedSliderScale = 1;
   const trackW = track.getBoundingClientRect().width || ORIG_W;
   cachedMaxOffset = Math.max(0, trackW - 44);
-  // 同步更新 piece 尺寸（若已有拼图）
+  // 同步更新 piece 尺寸与垂直位置（若已有拼图）
   if (piece.src && piece.src !== window.location.href) {
     piece.style.width = (PIECE_BOX * cachedSliderScale) + "px";
     piece.style.height = (PIECE_BOX * cachedSliderScale) + "px";
+    piece.style.top = (sliderPuzzleY * cachedSliderScale) + "px";
   }
 }
 
@@ -367,19 +378,15 @@ function loadSlider() {
       if (!json.ok) throw new Error(json.msg || "生成失败");
       const d = json.data;
       sliderToken = d.token;
-      const box = document.getElementById("sliderBox");
-      const track = document.getElementById("sliderTrack");
       const bg = document.getElementById("sliderBg");
       const piece = document.getElementById("sliderPiece");
-      box.style.width = ORIG_W + "px";
-      box.style.height = ORIG_H + "px";
-      track.style.width = ORIG_W + "px";
+      sliderPuzzleY = d.puzzle_y || 0;
       bg.src = d.background;
       piece.src = d.puzzle;
       updateSliderLayout();
       piece.style.width = (PIECE_BOX * cachedSliderScale) + "px";
       piece.style.height = (PIECE_BOX * cachedSliderScale) + "px";
-      piece.style.top = ((d.puzzle_y || 0) * cachedSliderScale) + "px";
+      piece.style.top = (sliderPuzzleY * cachedSliderScale) + "px";
       piece.style.left = "0px";
       resetSlider();
       showStatus("验证码已加载，请拖动滑块", true);
@@ -462,7 +469,8 @@ function endDrag() {
       showStatus("滑动验证通过！", true);
     } else {
       showStatus(json.msg || "验证失败", false);
-      thumb.style.transition = fill.style.transition = pieceEl.style.transition = "left 0.3s";
+      thumb.style.transition = pieceEl.style.transition = "left 0.3s";
+      fill.style.transition = "width 0.3s";
       thumb.style.left = fill.style.width = pieceEl.style.left = "0px";
       sliderOffset = 0;
       setTimeout(() => {
