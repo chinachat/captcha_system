@@ -26,3 +26,7 @@ FAIL_LOCK_THRESHOLD = int(os.environ.get("FAIL_LOCK_THRESHOLD", "8"))
 FAIL_LOCK_SECONDS = int(os.environ.get("FAIL_LOCK_SECONDS", "300"))
 
 REDIS_URL = os.environ.get("REDIS_URL", "")
+
+# 可信代理 IP / CIDR 列表（逗号分隔），仅当请求来自这些地址时才信任 X-Forwarded-For
+# 例如: "192.168.1.0/24,10.0.0.1" 或 "127.0.0.1"
+TRUSTED_PROXIES = os.environ.get("TRUSTED_PROXIES", "")
