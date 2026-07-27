@@ -20,6 +20,44 @@
       --post: #34d399;
       --code-bg: #080d18;
     }
+    [data-theme="light"] {
+      --bg: #f8fafc;
+      --sidebar: #ffffff;
+      --panel: #ffffff;
+      --panel-hover: #f1f5f9;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #4f46e5;
+      --accent2: #4338ca;
+      --ok: #059669;
+      --get: #0284c7;
+      --post: #059669;
+      --code-bg: #f1f5f9;
+    }
+    .theme-toggle {
+      position: fixed; top: 14px; right: 16px; z-index: 50;
+      width: 36px; height: 36px; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--panel);
+      color: var(--text); cursor: pointer; display: flex;
+      align-items: center; justify-content: center;
+      font-size: 18px; transition: background .2s, transform .15s;
+    }
+    .theme-toggle:hover { background: var(--panel-hover); transform: scale(1.05); }
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 20px 32px;
+      color: var(--muted);
+      font-size: 13px;
+      display: flex; flex-wrap: wrap; gap: 12px;
+      align-items: center; justify-content: space-between;
+    }
+    .footer a { color: var(--accent); }
+    .footer a:hover { text-decoration: underline; }
+    @media (max-width: 600px) {
+      .footer { flex-direction: column; text-align: center; gap: 8px; padding: 16px; }
+      .theme-toggle { top: 10px; right: 10px; width: 32px; height: 32px; font-size: 16px; }
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
     body {
@@ -267,6 +305,7 @@
   <div class="layout">
     <aside class="sidebar">
       <div class="brand">Captcha <span>API</span></div>
+      <button class="theme-toggle" id="themeBtn" title="切换主题" onclick="toggleTheme()">☀</button>
       <nav class="nav">
         <div class="group-title">概览</div>
         <a href="#env" class="active">当前环境</a>
@@ -520,6 +559,14 @@
     </main>
   </div>
 
+  <div class="footer">
+    <div>
+      <a href="https://github.com/chinachat/captcha_system" target="_blank">GitHub 仓库</a>
+      &middot; <a href="https://github.com/chinachat/captcha_system/blob/main/LICENSE" target="_blank">MIT 开源协议</a>
+    </div>
+    <div>&copy; 2026 chinachat. 保留所有权利。</div>
+  </div>
+
   <div class="toast" id="toast">已复制到剪贴板</div>
 
 <script>
@@ -770,6 +817,31 @@ fill();
   setActive();
 })();
 
+
+/* ===== 主题切换 ===== */
+(function() {
+  const btn = document.getElementById("themeBtn");
+  const saved = localStorage.getItem("captcha-theme");
+  const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+  if (saved === "light" || (!saved && prefersLight)) {
+    document.documentElement.setAttribute("data-theme", "light");
+    if (btn) btn.textContent = "☽";
+  }
+})();
+function toggleTheme() {
+  const html = document.documentElement;
+  const btn = document.getElementById("themeBtn");
+  const isLight = html.getAttribute("data-theme") === "light";
+  if (isLight) {
+    html.removeAttribute("data-theme");
+    localStorage.setItem("captcha-theme", "dark");
+    if (btn) btn.textContent = "☀";
+  } else {
+    html.setAttribute("data-theme", "light");
+    localStorage.setItem("captcha-theme", "light");
+    if (btn) btn.textContent = "☽";
+  }
+}
 </script>
 </body>
 </html>

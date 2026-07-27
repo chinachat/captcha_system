@@ -558,7 +558,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                 {"method": "POST", "path": "/api/v1/captcha/slider/verify", "body": {"token": "", "offset_x": 0}},
                 {"method": "POST", "path": "/api/v1/captcha/click/generate", "desc": "生成点选验证码"},
                 {"method": "POST", "path": "/api/v1/captcha/click/verify", "body": {"token": "", "points": [{"x":0,"y":0}]}},
-                {"method": "POST", "path": "/api/v1/admin/login", "body": {"username": "admin", "password": "admin123"}},
+                {"method": "POST", "path": "/api/v1/admin/login", "body": {"username": "admin", "password": "<your-password>"}},
                 {"method": "GET", "path": "/api/v1/stats", "desc": "统计（需管理员）"},
                 {"method": "GET", "path": "/api/v1/admin/keys", "desc": "列出 API Key"},
                 {"method": "POST", "path": "/api/v1/admin/keys", "body": {"name": "业务名", "note": "备注"}},
@@ -566,5 +566,5 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                 {"method": "DELETE", "path": "/api/v1/admin/keys/{key}"},
             ],
             "default_api_key": config.DEFAULT_API_KEY,
-            "admin": {"username": config.ADMIN_USER, "password": config.ADMIN_PASS},
+            "admin": {"username": config.ADMIN_USER, "note": "生产环境请务必修改默认密码"},
         })
