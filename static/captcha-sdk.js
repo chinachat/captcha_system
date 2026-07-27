@@ -1,6 +1,15 @@
 /**
  * CaptchaSDK — 验证码前端接入插件
  *
+ * 修复内容（v1.1.0）：
+ *   - 移动端触摸事件完整生命周期（touchcancel 兜底）
+ *   - 缓存 scale / maxOffset，防止地址栏变化导致坐标漂移
+ *   - 监听 resize / orientationchange 自动重算尺寸
+ *   - touch-action: none 防止滑块/点选时页面滚动
+ *   - 增大滑块触摸目标（::after 扩展至 56×56）
+ *   - 点选点击添加涟漪反馈动画
+ *   - 阻止多点触控缩放
+ *
  * 用法：
  *   <script src="https://your-host/static/captcha-sdk.js"></script>
  *   CaptchaSDK.verify({
@@ -27,14 +36,17 @@
     ".csdk-prompt{text-align:center;font-size:15px;font-weight:600;margin-bottom:10px;color:#1e293b}",
     ".csdk-prompt .hl{display:inline-block;padding:2px 6px;margin:0 2px;background:#eef2ff;color:#4338ca;border-radius:6px}",
     ".csdk-progress{text-align:center;font-size:12px;color:#64748b;margin-bottom:8px}",
-    ".csdk-box{position:relative;width:320px;max-width:100%;height:180px;margin:0 auto 12px;border-radius:8px;overflow:hidden;cursor:crosshair;background:#e5e7eb;user-select:none}",
+    ".csdk-box{position:relative;width:320px;max-width:100%;margin:0 auto 12px;border-radius:8px;overflow:hidden;cursor:crosshair;background:#e5e7eb;user-select:none;touch-action:none}",
     ".csdk-box.slider{height:160px}",
     ".csdk-box img{width:100%;height:100%;display:block;object-fit:fill;pointer-events:none}",
     ".csdk-piece{position:absolute;left:0;top:0;pointer-events:none;filter:drop-shadow(2px 2px 2px rgba(0,0,0,.3))}",
     ".csdk-marker{position:absolute;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;background:rgba(79,70,229,.9);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff;pointer-events:none}",
-    ".csdk-track{position:relative;width:320px;max-width:100%;height:44px;margin:0 auto 12px;background:#f3f4f6;border-radius:22px;overflow:hidden}",
+    "@keyframes csdk-ripple{0%{transform:scale(1);opacity:.6}100%{transform:scale(4);opacity:0}}",
+    ".csdk-ripple{position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:rgba(79,70,229,.35);pointer-events:none;animation:csdk-ripple .5s ease-out forwards}",
+    ".csdk-track{position:relative;width:320px;max-width:100%;height:44px;margin:0 auto 12px;background:#f3f4f6;border-radius:22px;overflow:hidden;touch-action:none}",
     ".csdk-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,#4f46e5,#7c3aed);border-radius:22px}",
-    ".csdk-thumb{position:absolute;left:0;top:0;width:44px;height:44px;background:#fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.2);cursor:grab;display:flex;align-items:center;justify-content:center;z-index:2;user-select:none}",
+    ".csdk-thumb{position:absolute;left:0;top:0;width:44px;height:44px;background:#fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.2);cursor:grab;display:flex;align-items:center;justify-content:center;z-index:2;user-select:none;touch-action:none}",
+    ".csdk-thumb::after{content:'';position:absolute;inset:-6px;border-radius:50%}",
     ".csdk-tip{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:13px;pointer-events:none}",
     ".csdk-btns{display:flex;gap:8px}",
     ".csdk-btns button{flex:1;padding:10px;border:none;border-radius:8px;font-size:14px;cursor:pointer}",
@@ -115,6 +127,7 @@
     function load() {
       state.points = []; state.timings = []; state.start = 0;
       box.querySelectorAll(".csdk-marker").forEach(function (m) { m.remove(); });
+      box.querySelectorAll(".csdk-ripple").forEach(function (m) { m.remove(); });
       statusEl(st, "加载中…", true);
       request(opts.baseUrl, "/api/v1/captcha/click/generate", opts.apiKey)
         .then(function (json) {
@@ -134,10 +147,24 @@
         .catch(function (e) { statusEl(st, e.message, false); });
     }
 
+    function addClickFeedback(x, y) {
+      var ripple = document.createElement("div");
+      ripple.className = "csdk-ripple";
+      ripple.style.left = x + "px";
+      ripple.style.top = y + "px";
+      box.appendChild(ripple);
+      setTimeout(function () { ripple.remove(); }, 500);
+    }
+
+    // 阻止多点触控缩放
+    box.addEventListener("touchstart", function (e) {
+      if (e.touches.length > 1) e.preventDefault();
+    }, { passive: false });
+
     box.addEventListener("click", function (e) {
       if (!state.token || state.points.length >= state.need) return;
       var rect = box.getBoundingClientRect();
-      var scale = rect.width / (320);
+      var scale = rect.width / 320;
       var dx = e.clientX - rect.left;
       var dy = e.clientY - rect.top;
       state.points.push({
@@ -152,6 +179,7 @@
       mk.style.left = dx + "px";
       mk.style.top = dy + "px";
       box.appendChild(mk);
+      addClickFeedback(dx, dy);
       mask.querySelector("[data-progress]").textContent =
         "已选 " + state.points.length + " / " + state.need;
     });
@@ -159,6 +187,7 @@
     mask.querySelector("[data-reset]").onclick = function () {
       state.points = []; state.timings = []; state.start = 0;
       box.querySelectorAll(".csdk-marker").forEach(function (m) { m.remove(); });
+      box.querySelectorAll(".csdk-ripple").forEach(function (m) { m.remove(); });
       mask.querySelector("[data-progress]").textContent = "已选 0 / " + state.need;
     };
     mask.querySelector("[data-refresh]").onclick = load;
@@ -209,7 +238,10 @@
     document.body.style.overflow = "hidden";
 
     var ORIG_W = 320, PIECE = 58;
-    var state = { token: null, offset: 0, dragging: false, startX: 0, track: [], t0: 0 };
+    var state = {
+      token: null, offset: 0, dragging: false, startX: 0,
+      track: [], t0: 0, puzzleY: 0
+    };
     var box = mask.querySelector("[data-box]");
     var track = mask.querySelector("[data-track]");
     var thumb = mask.querySelector("[data-thumb]");
@@ -219,11 +251,16 @@
     var st = mask.querySelector("[data-status]");
     var closed = false;
 
+    // 缓存布局参数，防止滑动过程中地址栏变化导致坐标漂移
+    var layout = { scale: 1, maxOffset: 276 };
+
     function cleanup(err, token) {
       if (closed) return;
       closed = true;
       document.body.style.overflow = "";
       mask.remove();
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onOrientationChange);
       if (err) reject(err);
       else resolve(token);
     }
@@ -232,9 +269,29 @@
       if (e.target === mask) cleanup(new Error("用户取消"));
     });
 
-    function scale() {
-      return (box.getBoundingClientRect().width || ORIG_W) / ORIG_W;
+    function updateLayout() {
+      var boxW = box.getBoundingClientRect().width || ORIG_W;
+      layout.scale = boxW / ORIG_W;
+      if (layout.scale <= 0) layout.scale = 1;
+      var trackW = track.getBoundingClientRect().width || ORIG_W;
+      layout.maxOffset = Math.max(0, trackW - 44);
+      // 同步更新 piece 尺寸
+      piece.style.width = (PIECE * layout.scale) + "px";
+      piece.style.height = (PIECE * layout.scale) + "px";
+      piece.style.top = (state.puzzleY * layout.scale) + "px";
     }
+
+    function onResize() {
+      if (closed) return;
+      updateLayout();
+    }
+    function onOrientationChange() {
+      if (closed) return;
+      // 屏幕旋转动画完成后重算
+      setTimeout(updateLayout, 300);
+    }
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onOrientationChange);
 
     function load() {
       statusEl(st, "加载中…", true);
@@ -243,18 +300,14 @@
           if (!json.ok) throw new Error(json.msg || "生成失败");
           var d = json.data;
           state.token = d.token;
+          state.puzzleY = d.puzzle_y || 0;
           mask.querySelector("[data-bg]").src = d.background;
           piece.src = d.puzzle;
-          requestAnimationFrame(function () {
-            var s = scale();
-            piece.style.width = (PIECE * s) + "px";
-            piece.style.height = (PIECE * s) + "px";
-            piece.style.top = ((d.puzzle_y || 0) * s) + "px";
-            piece.style.left = "0px";
-          });
+          updateLayout();
           state.offset = 0;
           thumb.style.left = "0px";
           fill.style.width = "0px";
+          piece.style.left = "0px";
           tip.textContent = "拖动滑块完成拼图";
           tip.style.opacity = "1";
           tip.style.color = "#9ca3af";
@@ -267,8 +320,7 @@
       if (!state.dragging) return;
       e.preventDefault();
       var cx = e.touches ? e.touches[0].clientX : e.clientX;
-      var max = Math.max(0, track.getBoundingClientRect().width - 44);
-      var x = Math.max(0, Math.min(cx - state.startX, max));
+      var x = Math.max(0, Math.min(cx - state.startX, layout.maxOffset));
       state.offset = x;
       thumb.style.left = x + "px";
       fill.style.width = (x + 22) + "px";
@@ -288,8 +340,9 @@
       document.removeEventListener("mouseup", onUp);
       document.removeEventListener("touchmove", onMove);
       document.removeEventListener("touchend", onUp);
+      document.removeEventListener("touchcancel", onUp);
       if (!state.token) return;
-      var s = scale();
+      var s = layout.scale;
       var ox = s > 0 ? state.offset / s : state.offset;
       var duration = Math.round(performance.now() - state.t0);
       var tr = state.track.map(function (p) {
@@ -331,6 +384,7 @@
       state.track = [{ x: state.offset, t: 0 }];
       document.addEventListener("touchmove", onMove, { passive: false });
       document.addEventListener("touchend", onUp);
+      document.addEventListener("touchcancel", onUp);
     }, { passive: false });
 
     mask.querySelector("[data-refresh]").onclick = load;
@@ -359,6 +413,6 @@
 
   global.CaptchaSDK = {
     verify: verify,
-    version: "1.0.0"
+    version: "1.1.0"
   };
 })(typeof window !== "undefined" ? window : this);
