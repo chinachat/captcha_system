@@ -1,4 +1,5 @@
 """抗自动化：轨迹/时序分析与失败锁定"""
+import random
 from collections import defaultdict
 
 from . import config
@@ -7,16 +8,41 @@ from .utils import now
 _fail_counter = defaultdict(int)
 _fail_lock_until = {}
 
+
 def _client_key(ip, api_key=""):
     return f"{ip}|{(api_key or '')[:16]}"
 
+
+def _cleanup_expired():
+    """清理已过期的锁定记录和计数器，防止内存无限增长。"""
+    now_t = now()
+    expired = [k for k, v in _fail_lock_until.items() if v < now_t]
+    for k in expired:
+        _fail_lock_until.pop(k, None)
+        _fail_counter.pop(k, None)
+    # 清理计数器为 0 且无锁定记录的孤立条目
+    stale = [k for k, c in _fail_counter.items() if c == 0 and k not in _fail_lock_until]
+    for k in stale:
+        _fail_counter.pop(k, None)
+
+
 def is_locked(ip, api_key="") -> tuple:
     """返回 (locked, remaining_seconds)"""
+    now_t = now()
+    # 概率触发全局过期清理（避免内存无限增长）
+    if len(_fail_lock_until) > 500 and random.random() < 0.05:
+        _cleanup_expired()
+
     k = _client_key(ip, api_key)
     until = _fail_lock_until.get(k, 0)
-    if until > now():
-        return True, int(until - now()) + 1
+    if until > now_t:
+        return True, int(until - now_t) + 1
+    # 该 key 的锁定已过期，清理相关计数器
+    if k in _fail_lock_until:
+        _fail_lock_until.pop(k, None)
+        _fail_counter.pop(k, None)
     return False, 0
+
 
 def record_fail(ip, api_key=""):
     k = _client_key(ip, api_key)
@@ -25,10 +51,12 @@ def record_fail(ip, api_key=""):
         _fail_lock_until[k] = now() + config.FAIL_LOCK_SECONDS
         _fail_counter[k] = 0
 
+
 def record_success(ip, api_key=""):
     k = _client_key(ip, api_key)
     _fail_counter[k] = 0
     _fail_lock_until.pop(k, None)
+
 
 def analyze_slider_track(track, offset_x, duration_ms) -> tuple:
     """
@@ -121,5 +149,3 @@ def analyze_click_timing(timings, points) -> tuple:
         if ts[i] + 1 < ts[i - 1]:
             return False, "time_not_monotonic"
     return True, "ok"
-
-
