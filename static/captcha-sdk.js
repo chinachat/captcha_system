@@ -1,6 +1,12 @@
 /**
  * CaptchaSDK — 验证码前端接入插件
  *
+ * 修复内容（v1.1.1）：
+ *   - 滑块/点选容器改用 aspect-ratio，宽度自适应时 X/Y 缩放比保持一致
+ *     （修复窄屏下写死 height 导致的拼图垂直错位与点选 Y 坐标偏差）
+ *   - 弹窗加 max-height + 内部滚动，适配手机横屏等矮视口
+ *   - 去除触摸点击高亮（-webkit-tap-highlight-color）
+ *
  * 修复内容（v1.1.0）：
  *   - 移动端触摸事件完整生命周期（touchcancel 兜底）
  *   - 缓存 scale / maxOffset，防止地址栏变化导致坐标漂移
@@ -28,7 +34,7 @@
   var STYLE_ID = "captcha-sdk-style";
   var CSS = [
     ".csdk-mask{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif}",
-    ".csdk-modal{background:#fff;border-radius:16px;width:100%;max-width:380px;box-shadow:0 25px 60px rgba(0,0,0,.35);overflow:hidden}",
+    ".csdk-modal{background:#fff;border-radius:16px;width:100%;max-width:380px;box-shadow:0 25px 60px rgba(0,0,0,.35);overflow:hidden;max-height:calc(100% - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch}",
     ".csdk-hd{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #f1f5f9}",
     ".csdk-hd h3{margin:0;font-size:16px;color:#1e293b}",
     ".csdk-x{width:32px;height:32px;border:none;border-radius:8px;background:#f1f5f9;cursor:pointer;font-size:18px;color:#64748b}",
@@ -36,8 +42,8 @@
     ".csdk-prompt{text-align:center;font-size:15px;font-weight:600;margin-bottom:10px;color:#1e293b}",
     ".csdk-prompt .hl{display:inline-block;padding:2px 6px;margin:0 2px;background:#eef2ff;color:#4338ca;border-radius:6px}",
     ".csdk-progress{text-align:center;font-size:12px;color:#64748b;margin-bottom:8px}",
-    ".csdk-box{position:relative;width:320px;max-width:100%;margin:0 auto 12px;border-radius:8px;overflow:hidden;cursor:crosshair;background:#e5e7eb;user-select:none;touch-action:none}",
-    ".csdk-box.slider{height:160px}",
+    ".csdk-box{position:relative;width:320px;max-width:100%;aspect-ratio:16/9;margin:0 auto 12px;border-radius:8px;overflow:hidden;cursor:crosshair;background:#e5e7eb;user-select:none;touch-action:none;-webkit-tap-highlight-color:transparent}",
+    ".csdk-box.slider{aspect-ratio:2/1}",
     ".csdk-box img{width:100%;height:100%;display:block;object-fit:fill;pointer-events:none}",
     ".csdk-piece{position:absolute;left:0;top:0;pointer-events:none;filter:drop-shadow(2px 2px 2px rgba(0,0,0,.3))}",
     ".csdk-marker{position:absolute;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;background:rgba(79,70,229,.9);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff;pointer-events:none}",
@@ -45,7 +51,7 @@
     ".csdk-ripple{position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:rgba(79,70,229,.35);pointer-events:none;animation:csdk-ripple .5s ease-out forwards}",
     ".csdk-track{position:relative;width:320px;max-width:100%;height:44px;margin:0 auto 12px;background:#f3f4f6;border-radius:22px;overflow:hidden;touch-action:none}",
     ".csdk-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,#4f46e5,#7c3aed);border-radius:22px}",
-    ".csdk-thumb{position:absolute;left:0;top:0;width:44px;height:44px;background:#fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.2);cursor:grab;display:flex;align-items:center;justify-content:center;z-index:2;user-select:none;touch-action:none}",
+    ".csdk-thumb{position:absolute;left:0;top:0;width:44px;height:44px;background:#fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.2);cursor:grab;display:flex;align-items:center;justify-content:center;z-index:2;user-select:none;touch-action:none;-webkit-tap-highlight-color:transparent}",
     ".csdk-thumb::after{content:'';position:absolute;inset:-6px;border-radius:50%}",
     ".csdk-tip{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:13px;pointer-events:none}",
     ".csdk-btns{display:flex;gap:8px}",
@@ -413,6 +419,6 @@
 
   global.CaptchaSDK = {
     verify: verify,
-    version: "1.1.0"
+    version: "1.1.1"
   };
 })(typeof window !== "undefined" ? window : this);
