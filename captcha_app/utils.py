@@ -3,7 +3,7 @@ import io
 import base64
 import secrets
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from PIL import Image
 import jwt
@@ -27,8 +27,8 @@ def random_color(low=40, high=200):
 
 def create_jwt(payload: dict) -> str:
     payload = payload.copy()
-    payload["exp"] = datetime.utcnow() + timedelta(hours=config.JWT_EXPIRE_HOURS)
-    payload["iat"] = datetime.utcnow()
+    payload["exp"] = datetime.now(timezone.utc) + timedelta(hours=config.JWT_EXPIRE_HOURS)
+    payload["iat"] = datetime.now(timezone.utc)
     return jwt.encode(payload, config.SECRET_KEY, algorithm="HS256")
 
 
