@@ -509,7 +509,7 @@
               <div class="block" id="cv-js"><pre id="pre-cv-js"></pre></div>
             </div>
             <div class="actions">
-              <button type="btn" type="button" onclick="copyPre('pre-cv-curl')">复制</button>
+              <button class="btn" type="button" onclick="copyPre('pre-cv-curl')">复制</button>
             </div>
           </div>
         </article>
@@ -598,7 +598,7 @@ function fill() {
   .then(console.log);`;
 
   document.getElementById("pre-sg-curl").textContent =
-`curl -s -X POST ${B}/api/v1/captcha/slider/generate \
+`curl -s -X POST ${B}/api/v1/captcha/slider/generate \\
   -H "X-API-Key: ${K}"`;
 
   document.getElementById("pre-sg-js").textContent =
@@ -610,9 +610,9 @@ const json = await res.json();
 // json.data: token, background, puzzle, puzzle_y`;
 
   document.getElementById("pre-sv-curl").textContent =
-`curl -s -X POST ${B}/api/v1/captcha/slider/verify \
-  -H "X-API-Key: ${K}" \
-  -H "Content-Type: application/json" \
+`curl -s -X POST ${B}/api/v1/captcha/slider/verify \\
+  -H "X-API-Key: ${K}" \\
+  -H "Content-Type: application/json" \\
   -d '{
     "token": "<generate 返回的 token>",
     "offset_x": 128.5,
@@ -636,7 +636,7 @@ const json = await res.json();
 }).then(r => r.json()); // → pass_token`;
 
   document.getElementById("pre-cg-curl").textContent =
-`curl -s -X POST ${B}/api/v1/captcha/click/generate \
+`curl -s -X POST ${B}/api/v1/captcha/click/generate \\
   -H "X-API-Key: ${K}"`;
 
   document.getElementById("pre-cg-js").textContent =
@@ -648,9 +648,9 @@ const json = await res.json();
 // json.data: token, image, chars, prompt`;
 
   document.getElementById("pre-cv-curl").textContent =
-`curl -s -X POST ${B}/api/v1/captcha/click/verify \
-  -H "X-API-Key: ${K}" \
-  -H "Content-Type: application/json" \
+`curl -s -X POST ${B}/api/v1/captcha/click/verify \\
+  -H "X-API-Key: ${K}" \\
+  -H "Content-Type: application/json" \\
   -d '{
     "token": "<generate 返回的 token>",
     "points": [{"x":120,"y":80},{"x":200,"y":95},{"x":60,"y":130}],
@@ -685,8 +685,8 @@ const json = await res.json();
 }).catch(console.warn);`;
 
   document.getElementById("pre-admin-curl").textContent =
-`curl -s -X POST ${B}/api/v1/admin/login \
-  -H "Content-Type: application/json" \
+`curl -s -X POST ${B}/api/v1/admin/login \\
+  -H "Content-Type: application/json" \\
   -d '{"username":"admin","password":"admin123"}'`;
 }
 
