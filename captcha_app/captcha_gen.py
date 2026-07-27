@@ -7,35 +7,73 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from . import fonts, utils
 
-def draw_puzzle_path(draw, x, y, size, bump=8):
-    r = bump
-    path = []
-    path.append((x, y))
-    path.append((x + size * 0.35, y))
-    for i in range(9):
-        ang = math.pi + i * math.pi / 8
-        path.append((x + size * 0.5 + r * math.cos(ang), y + r * math.sin(ang)))
-    path.append((x + size * 0.65, y))
-    path.append((x + size, y))
-    path.append((x + size, y + size * 0.35))
-    for i in range(9):
-        ang = -math.pi / 2 + i * math.pi / 8
-        path.append((x + size + r * math.cos(ang), y + size * 0.5 + r * math.sin(ang)))
-    path.append((x + size, y + size * 0.65))
-    path.append((x + size, y + size))
-    path.append((x + size * 0.65, y + size))
-    for i in range(9):
-        ang = 0 + i * math.pi / 8
-        path.append((x + size * 0.5 + r * math.cos(ang), y + size + r * math.sin(ang)))
-    path.append((x + size * 0.35, y + size))
-    path.append((x, y + size))
-    path.append((x, y + size * 0.65))
-    for i in range(9):
-        ang = math.pi / 2 + i * math.pi / 8
-        path.append((x + r * math.cos(ang), y + size * 0.5 + r * math.sin(ang)))
-    path.append((x, y + size * 0.35))
+
+def random_puzzle_spec():
+    """随机拼图缺口形状：四条边各自随机 平直 / 外凸 / 内凹、半径与位置。
+
+    返回 [(r, direction, pos), ...]，顺序为 上 / 右 / 下 / 左。
+      - r=0 表示该边平直；
+      - direction=1 外凸 / -1 内凹；
+      - pos 为凸起中心在边上的归一化位置（0.35~0.65）。
+    半径最大 7，保证凸起不超出拼图块画布的内边距 pad=8。
+    每次生成至少两条边带凸起，避免退化成纯方块（降低模板匹配可行性）。
+    """
+    edges = []
+    for _ in range(4):
+        if secrets.randbelow(4) == 0:  # 约 25% 概率平直
+            edges.append((0, 1, 0.5))
+            continue
+        r = 4 + secrets.randbelow(4)  # 4~7px
+        direction = -1 if secrets.randbelow(3) == 0 else 1  # 1/3 内凹，2/3 外凸
+        pos = (35 + secrets.randbelow(31)) / 100.0  # 0.35~0.65
+        edges.append((r, direction, pos))
+    # 保证至少两条边带凸起
+    flat_idx = [i for i, e in enumerate(edges) if e[0] == 0]
+    while len(flat_idx) > 2:
+        i = flat_idx.pop(secrets.randbelow(len(flat_idx)))
+        edges[i] = (
+            4 + secrets.randbelow(4),
+            -1 if secrets.randbelow(3) == 0 else 1,
+            (35 + secrets.randbelow(31)) / 100.0,
+        )
+    return edges
+
+
+def draw_puzzle_path(draw, x, y, size, bump=8, edges=None):
+    """构造拼图缺口多边形路径。
+
+    edges 为 random_puzzle_spec() 的输出（上 / 右 / 下 / 左四边）；为 None 时
+    退回经典四边外凸形状（兼容旧调用）。
+    注意：同一次验证码必须把同一个 edges 传给蒙版 / 阴影 / 缺口三处调用，
+    保证三块形状严丝合缝。
+    """
+    if edges is None:
+        edges = [(min(bump, 7), 1, 0.5)] * 4
+    # 各边：起点、沿边前进方向单位向量 u、朝外的法线单位向量 n（屏幕坐标 y 向下）
+    sides = [
+        ((x, y), (1, 0), (0, -1)),                # 上边，外侧朝上
+        ((x + size, y), (0, 1), (1, 0)),          # 右边，外侧朝右
+        ((x + size, y + size), (-1, 0), (0, 1)),  # 下边，外侧朝下
+        ((x, y + size), (0, -1), (-1, 0)),        # 左边，外侧朝左
+    ]
+    path = [(x, y)]
+    for (r, direction, pos), (a, (ux, uy), (nx, ny)) in zip(edges, sides):
+        end = (a[0] + ux * size, a[1] + uy * size)
+        if r <= 0:
+            path.append(end)
+            continue
+        cx, cy = a[0] + ux * pos * size, a[1] + uy * pos * size
+        # 直线到圆弧起点，再画半圆（direction=1 朝外鼓出，-1 朝内凹进）
+        path.append((cx - ux * r, cy - uy * r))
+        for i in range(9):
+            ang = math.pi - i * math.pi / 8
+            px = cx + ux * r * math.cos(ang) + nx * direction * r * math.sin(ang)
+            py = cy + uy * r * math.cos(ang) + ny * direction * r * math.sin(ang)
+            path.append((px, py))
+        path.append(end)
     path.append((x, y))
     return path
+
 
 def generate_slider_captcha(width=320, height=160, puzzle_size=42):
     bg = Image.new("RGB", (width, height), utils.random_color(80, 180))
@@ -58,20 +96,25 @@ def generate_slider_captcha(width=320, height=160, puzzle_size=42):
     puzzle_x = margin + 40 + secrets.randbelow(max(1, width - puzzle_size - margin - 80))
     puzzle_y = margin + secrets.randbelow(max(1, height - puzzle_size - margin * 2))
 
-    piece = Image.new("RGBA", (puzzle_size + 16, puzzle_size + 16), (0, 0, 0, 0))
-    mask = Image.new("L", (puzzle_size + 16, puzzle_size + 16), 0)
+    # 每次生成随机缺口形状；pad 固定 8（handler 对齐与前端块尺寸均按 pad=8），
+    # 凸起半径最大 7，不会越界裁切。
+    pad = 8
+    spec = random_puzzle_spec()
+
+    piece = Image.new("RGBA", (puzzle_size + pad * 2, puzzle_size + pad * 2), (0, 0, 0, 0))
+    mask = Image.new("L", (puzzle_size + pad * 2, puzzle_size + pad * 2), 0)
     mask_draw = ImageDraw.Draw(mask)
-    path = draw_puzzle_path(mask_draw, 8, 8, puzzle_size, bump=7)
+    path = draw_puzzle_path(mask_draw, pad, pad, puzzle_size, edges=spec)
     mask_draw.polygon(path, fill=255)
 
-    region = bg.crop((puzzle_x - 8, puzzle_y - 8, puzzle_x + puzzle_size + 8, puzzle_y + puzzle_size + 8))
+    region = bg.crop((puzzle_x - pad, puzzle_y - pad, puzzle_x + puzzle_size + pad, puzzle_y + puzzle_size + pad))
     piece.paste(region, (0, 0))
     piece.putalpha(mask)
 
     bg_draw = ImageDraw.Draw(bg)
-    shadow_path = draw_puzzle_path(bg_draw, puzzle_x + 2, puzzle_y + 2, puzzle_size, bump=7)
+    shadow_path = draw_puzzle_path(bg_draw, puzzle_x + 2, puzzle_y + 2, puzzle_size, edges=spec)
     bg_draw.polygon(shadow_path, fill=(30, 30, 30))
-    hole_path = draw_puzzle_path(bg_draw, puzzle_x, puzzle_y, puzzle_size, bump=7)
+    hole_path = draw_puzzle_path(bg_draw, puzzle_x, puzzle_y, puzzle_size, edges=spec)
     overlay = Image.new("RGBA", bg.size, (0, 0, 0, 0))
     od = ImageDraw.Draw(overlay)
     od.polygon(hole_path, fill=(20, 20, 40, 160))
@@ -80,6 +123,7 @@ def generate_slider_captcha(width=320, height=160, puzzle_size=42):
     piece_draw = ImageDraw.Draw(piece)
     piece_draw.polygon(path, outline=(255, 255, 255, 200))
     return bg, piece, puzzle_x, puzzle_y
+
 
 def generate_click_captcha(width=320, height=180, total_chars=6, click_count=3):
     """点选验证码：图上随机撒字，要求用户按顺序点击其中若干个。
@@ -212,5 +256,3 @@ def generate_text_captcha(length=4, width=160, height=56):
         draw.text((x, y), ch, font=font, fill=utils.random_color(20, 100))
     img = img.filter(ImageFilter.SMOOTH)
     return img, code
-
-
