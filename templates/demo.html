@@ -3,24 +3,53 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="color-scheme" content="light dark">
   <title>动态验证码 Demo</title>
   <style>
+    :root {
+      --page-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --panel: #ffffff; --text: #333333; --muted: #888888;
+      --btn-bg: #f3f4f6; --btn-text: #374151;
+      --box-bg: #e5e7eb; --track-bg: #f3f4f6; --thumb-bg: #ffffff;
+      --info-bg: #f8fafc; --info-code: #e2e8f0; --info-text: #64748b;
+      --border: #f1f5f9;
+      --close-bg: #f1f5f9; --close-text: #64748b;
+      --close-hover-bg: #e2e8f0; --close-hover-text: #0f172a;
+      --hl-bg: #eef2ff; --hl-text: #4338ca;
+      --accent: #4f46e5;
+      --shadow: 0 20px 60px rgba(0,0,0,0.25);
+    }
+    [data-theme="dark"] {
+      --page-bg: linear-gradient(135deg, #0f172a 0%, #312e81 100%);
+      --panel: #1e293b; --text: #e8eef9; --muted: #8b9bb8;
+      --btn-bg: #334155; --btn-text: #e2e8f0;
+      --box-bg: #334155; --track-bg: #0f172a;
+      --info-bg: #0f172a; --info-code: #334155; --info-text: #8b9bb8;
+      --border: #334155;
+      --close-bg: #334155; --close-text: #94a3b8;
+      --close-hover-bg: #475569; --close-hover-text: #f1f5f9;
+      --hl-bg: #312e81; --hl-text: #c7d2fe;
+      --accent: #818cf8;
+      --shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh; padding: 24px; color: #333;
+      background: var(--page-bg);
+      min-height: 100vh; padding: 24px; color: var(--text);
+      transition: background .3s, color .3s;
     }
     .container {
-      max-width: 420px; margin: 0 auto; background: white;
-      border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.25); padding: 28px;
+      max-width: 420px; margin: 0 auto; background: var(--panel);
+      border-radius: 16px; box-shadow: var(--shadow); padding: 28px;
+      transition: background .3s;
     }
     h1 { text-align: center; font-size: 22px; margin-bottom: 6px; }
-    .sub { text-align: center; color: #888; font-size: 13px; margin-bottom: 20px; }
+    .sub { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 20px; }
     .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
     .tabs button {
       flex: 1; padding: 10px; border: none; border-radius: 8px;
-      font-size: 14px; font-weight: 500; cursor: pointer; background: #f3f4f6; color: #374151;
+      font-size: 14px; font-weight: 500; cursor: pointer; background: var(--btn-bg); color: var(--btn-text);
     }
     .tabs button.active { background: #4f46e5; color: white; }
     .panel { display: none; }
@@ -28,7 +57,7 @@
 
     .captcha-box {
       position: relative; width: 320px; height: 160px; max-width: 100%;
-      margin: 0 auto 12px; background: #e5e7eb; border-radius: 8px; overflow: hidden;
+      margin: 0 auto 12px; background: var(--box-bg); border-radius: 8px; overflow: hidden;
       touch-action: none;
     }
     .captcha-box img.bg { width: 100%; height: 100%; display: block; object-fit: fill; }
@@ -38,7 +67,7 @@
     }
     .slider-track {
       position: relative; width: 320px; max-width: 100%; height: 44px;
-      margin: 0 auto 12px; background: #f3f4f6; border-radius: 22px; overflow: hidden;
+      margin: 0 auto 12px; background: var(--track-bg); border-radius: 22px; overflow: hidden;
       touch-action: none;
     }
     .slider-fill {
@@ -47,7 +76,7 @@
     }
     .slider-thumb {
       position: absolute; left: 0; top: 0; width: 44px; height: 44px;
-      background: white; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      background: var(--thumb-bg); color: #374151; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
       cursor: grab; display: flex; align-items: center; justify-content: center;
       font-size: 18px; user-select: none; z-index: 2; touch-action: none;
     }
@@ -63,7 +92,7 @@
     }
     .btn-primary { background: #4f46e5; color: white; }
     .btn-primary:hover { background: #4338ca; }
-    .btn-secondary { background: #f3f4f6; color: #374151; }
+    .btn-secondary { background: var(--btn-bg); color: var(--btn-text); }
     .btn-row { display: flex; gap: 8px; }
     .btn-row .btn { flex: 1; margin-top: 0; }
     .status {
@@ -73,10 +102,11 @@
     .status.ok { background: #d1fae5; color: #065f46; display: block; }
     .status.err { background: #fee2e2; color: #991b1b; display: block; }
     .api-info {
-      margin-top: 24px; padding: 12px; background: #f8fafc; border-radius: 8px;
-      font-size: 12px; color: #64748b; word-break: break-all;
+      margin-top: 24px; padding: 12px; background: var(--info-bg); border-radius: 8px;
+      font-size: 12px; color: var(--info-text); word-break: break-all;
     }
-    .api-info code { background: #e2e8f0; padding: 1px 4px; border-radius: 3px; }
+    .api-info code { background: var(--info-code); padding: 1px 4px; border-radius: 3px; }
+    .api-info a { color: var(--accent); }
 
     /* ========== 点选弹出框 ========== */
     .modal-mask {
@@ -90,7 +120,7 @@
     }
     .modal-mask.open { display: flex; }
     .modal {
-      background: #fff;
+      background: var(--panel);
       border-radius: 16px;
       width: 100%; max-width: 380px;
       box-shadow: 0 25px 60px rgba(0,0,0,0.35);
@@ -103,31 +133,31 @@
     }
     .modal-header {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 14px 16px; border-bottom: 1px solid #f1f5f9;
+      padding: 14px 16px; border-bottom: 1px solid var(--border);
     }
-    .modal-header h3 { font-size: 16px; font-weight: 600; color: #1e293b; }
+    .modal-header h3 { font-size: 16px; font-weight: 600; color: var(--text); }
     .modal-close {
       width: 32px; height: 32px; border: none; border-radius: 8px;
-      background: #f1f5f9; color: #64748b; font-size: 18px; cursor: pointer;
+      background: var(--close-bg); color: var(--close-text); font-size: 18px; cursor: pointer;
       line-height: 1;
     }
-    .modal-close:hover { background: #e2e8f0; color: #0f172a; }
+    .modal-close:hover { background: var(--close-hover-bg); color: var(--close-hover-text); }
     .modal-body { padding: 16px; }
     .click-prompt {
-      text-align: center; font-size: 15px; font-weight: 600; color: #1e293b;
+      text-align: center; font-size: 15px; font-weight: 600; color: var(--text);
       margin-bottom: 10px; letter-spacing: 0.5px; line-height: 1.6;
     }
     .click-prompt .hl {
       display: inline-block; min-width: 28px; padding: 2px 6px; margin: 0 2px;
-      background: #eef2ff; color: #4338ca; border-radius: 6px; font-size: 16px;
+      background: var(--hl-bg); color: var(--hl-text); border-radius: 6px; font-size: 16px;
     }
     .click-progress {
-      text-align: center; font-size: 12px; color: #64748b; margin-bottom: 8px;
+      text-align: center; font-size: 12px; color: var(--muted); margin-bottom: 8px;
     }
     .click-box {
       position: relative; width: 320px; height: 180px; max-width: 100%;
       margin: 0 auto 12px; border-radius: 8px; overflow: hidden;
-      cursor: crosshair; background: #e5e7eb; user-select: none;
+      cursor: crosshair; background: var(--box-bg); user-select: none;
       touch-action: none;
     }
     .click-box img { width: 100%; height: 100%; display: block; object-fit: fill; pointer-events: none; }
@@ -156,7 +186,28 @@
     .click-entry {
       text-align: center; padding: 24px 12px;
     }
-    .click-entry p { color: #64748b; font-size: 13px; margin-bottom: 16px; }
+    .click-entry p { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+
+    /* ========== 页脚 · 版权 / MIT / 仓库 / 主题切换 ========== */
+    .site-footer {
+      margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;
+      color: var(--muted); font-size: 12px;
+    }
+    .site-footer a { color: var(--accent); text-decoration: none; }
+    .site-footer a:hover { text-decoration: underline; }
+    .sf-actions { display: flex; gap: 8px; align-items: center; }
+    .sf-gh {
+      display: flex; align-items: center; justify-content: center;
+      width: 34px; height: 34px; border-radius: 9px;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .sf-gh:hover { color: var(--text); text-decoration: none; }
+    .theme-toggle {
+      width: 34px; height: 34px; border-radius: 9px; cursor: pointer; font-size: 15px;
+      border: 1px solid var(--border); background: var(--btn-bg); color: var(--text);
+      display: flex; align-items: center; justify-content: center;
+    }
   </style>
 </head>
 <body>
@@ -194,10 +245,18 @@
     <div class="status" id="status"></div>
     <div class="api-info">
       API Key: <code>{{API_KEY}}</code><br>
-      管理后台: <a href="/admin" style="color:#4f46e5">/admin</a> ·
-      调用说明: <a href="/guide" style="color:#4f46e5">/docs</a> ·
-      API 文档: <a href="/api/v1/docs" style="color:#4f46e5">/api/v1/docs</a>
+      管理后台: <a href="/admin">/admin</a> ·
+      调用说明: <a href="/guide">/docs</a> ·
+      API 文档: <a href="/api/v1/docs">/api/v1/docs</a>
     </div>
+
+    <footer class="site-footer">
+      <div class="sf-copy">&copy; 2026 chinachat · <a href="https://github.com/chinachat/captcha_system/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a></div>
+      <div class="sf-actions">
+        <a class="sf-gh" href="https://github.com/chinachat/captcha_system" target="_blank" rel="noopener" title="GitHub 仓库" aria-label="GitHub 仓库"><svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+        <button type="button" class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题">☽</button>
+      </div>
+    </footer>
   </div>
 
   <!-- 点选验证弹出框 -->
@@ -525,6 +584,30 @@ function verifyClick() {
 }
 
 loadSlider();
+
+/* ===== 明暗主题切换（默认浅色，localStorage 记忆，跟随系统偏好） ===== */
+(function () {
+  var KEY = "captcha-theme";
+  var DEFAULT_THEME = "light";
+  function apply(theme) {
+    var root = document.documentElement;
+    if (theme === DEFAULT_THEME) root.removeAttribute("data-theme");
+    else root.setAttribute("data-theme", theme);
+    var icon = theme === "dark" ? "☀" : "☽";
+    var btns = document.querySelectorAll(".theme-toggle");
+    for (var i = 0; i < btns.length; i++) btns[i].textContent = icon;
+  }
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) {}
+  var theme = saved || ((window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : DEFAULT_THEME);
+  apply(theme);
+  window.toggleTheme = function () {
+    var cur = document.documentElement.getAttribute("data-theme") || DEFAULT_THEME;
+    var next = cur === "dark" ? "light" : "dark";
+    try { localStorage.setItem(KEY, next); } catch (e) {}
+    apply(next);
+  };
+})();
 </script>
 </body>
 </html>

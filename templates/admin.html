@@ -3,15 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
   <title>验证码管理仪表盘</title>
   <style>
     :root {
       --bg: #0b1220; --panel: #141c2e; --panel2: #1a2438; --border: #243049;
       --text: #e8eef9; --muted: #8b9bb8; --accent: #6366f1; --ok: #34d399; --err: #f87171;
+      --link: #a5b4fc; --code-text: #c4b5fd;
+    }
+    [data-theme="light"] {
+      --bg: #f1f5f9; --panel: #ffffff; --panel2: #e2e8f0; --border: #cbd5e1;
+      --text: #0f172a; --muted: #64748b; --accent: #4f46e5; --ok: #059669; --err: #dc2626;
+      --link: #4f46e5; --code-text: #7c3aed;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
-    a { color: #a5b4fc; text-decoration: none; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding-bottom: 64px; transition: background .3s, color .3s; }
+    a { color: var(--link); text-decoration: none; }
     .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
     .login-box { background: var(--panel); padding: 32px; border-radius: 14px; width: 360px; border: 1px solid var(--border); }
     .login-box h2 { text-align: center; margin-bottom: 20px; font-size: 20px; }
@@ -32,7 +39,7 @@
     }
     .topbar h1 { font-size: 18px; font-weight: 600; }
     .topbar .right { display: flex; gap: 12px; align-items: center; font-size: 13px; }
-    .badge { font-size: 11px; padding: 3px 8px; border-radius: 99px; background: #1e293b; color: var(--muted); border: 1px solid var(--border); }
+    .badge { font-size: 11px; padding: 3px 8px; border-radius: 99px; background: var(--panel2); color: var(--muted); border: 1px solid var(--border); }
     .badge.live { color: var(--ok); border-color: #065f46; }
 
     .main { max-width: 1200px; margin: 0 auto; padding: 20px 20px 40px; }
@@ -46,7 +53,7 @@
     .kpi .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
     .kpi .num { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
     .kpi .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
-    .num.ok { color: var(--ok); } .num.err { color: var(--err); } .num.accent { color: #a5b4fc; }
+    .num.ok { color: var(--ok); } .num.err { color: var(--err); } .num.accent { color: var(--link); }
 
     .grid2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; margin-bottom: 14px; }
     @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
@@ -54,7 +61,7 @@
     .panel {
       background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px;
     }
-    .panel h3 { font-size: 14px; color: #cbd5e1; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+    .panel h3 { font-size: 14px; color: var(--text); margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
 
     /* 简易柱状图 */
     .bars { display: flex; align-items: flex-end; gap: 4px; height: 140px; padding-top: 8px; }
@@ -96,7 +103,32 @@
       background: var(--bg); border: 1px dashed var(--border); border-radius: 8px;
       padding: 12px; font-size: 12px; color: var(--muted); line-height: 1.6;
     }
-    .plugin-box code { color: #c4b5fd; }
+    .plugin-box code { color: var(--code-text); }
+
+    /* ========== 页脚 · 版权 / MIT / 仓库 / 主题切换 ========== */
+    .site-footer {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+      background: var(--panel); border-top: 1px solid var(--border);
+      padding: 10px 24px;
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;
+      color: var(--muted); font-size: 12px;
+    }
+    .site-footer a { color: var(--link); }
+    .sf-actions { display: flex; gap: 8px; align-items: center; }
+    .sf-gh {
+      display: flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: 9px;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .sf-gh:hover { color: var(--text); text-decoration: none; }
+    .theme-toggle {
+      width: 32px; height: 32px; border-radius: 9px; cursor: pointer; font-size: 15px;
+      border: 1px solid var(--border); background: var(--panel2); color: var(--text);
+      display: flex; align-items: center; justify-content: center;
+    }
+    @media (max-width: 600px) {
+      .site-footer { padding: 8px 14px; font-size: 11px; }
+    }
   </style>
 </head>
 <body>
@@ -179,6 +211,14 @@
       </div>
     </div>
   </div>
+
+  <footer class="site-footer">
+    <div class="sf-copy">&copy; 2026 chinachat · <a href="https://github.com/chinachat/captcha_system/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a></div>
+    <div class="sf-actions">
+      <a class="sf-gh" href="https://github.com/chinachat/captcha_system" target="_blank" rel="noopener" title="GitHub 仓库" aria-label="GitHub 仓库"><svg viewBox="0 0 16 16" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+      <button type="button" class="theme-toggle" onclick="toggleTheme()" title="切换明暗主题" aria-label="切换明暗主题">☀</button>
+    </div>
+  </footer>
 
 <script>
 let adminToken = localStorage.getItem("admin_token") || "";
@@ -331,6 +371,30 @@ async function loadStats() {
 if (adminToken) showDash();
 else document.getElementById("loginView").style.display = "flex";
 document.getElementById("password").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+
+/* ===== 明暗主题切换（默认深色，localStorage 记忆，跟随系统偏好） ===== */
+(function () {
+  var KEY = "captcha-theme";
+  var DEFAULT_THEME = "dark";
+  function apply(theme) {
+    var root = document.documentElement;
+    if (theme === DEFAULT_THEME) root.removeAttribute("data-theme");
+    else root.setAttribute("data-theme", theme);
+    var icon = theme === "dark" ? "☀" : "☽";
+    var btns = document.querySelectorAll(".theme-toggle");
+    for (var i = 0; i < btns.length; i++) btns[i].textContent = icon;
+  }
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) {}
+  var theme = saved || ((window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : DEFAULT_THEME);
+  apply(theme);
+  window.toggleTheme = function () {
+    var cur = document.documentElement.getAttribute("data-theme") || DEFAULT_THEME;
+    var next = cur === "dark" ? "light" : "dark";
+    try { localStorage.setItem(KEY, next); } catch (e) {}
+    apply(next);
+  };
+})();
 </script>
 </body>
 </html>
