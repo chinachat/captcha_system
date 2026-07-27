@@ -14,6 +14,9 @@ services:
       - DEFAULT_API_KEY=demo-api-key-captcha-2026
       - RATE_LIMIT_GENERATE=30
       - CAPTCHA_EXPIRE=120
+      # 可信代理 IP（反向代理场景下填写，防止客户端伪造 X-Forwarded-For）
+      # 例如: "192.168.1.0/24,127.0.0.1"
+      # - TRUSTED_PROXIES=127.0.0.1
       # 启用 Redis 时取消下面两行注释，并启用下方 redis 服务
       # - REDIS_URL=redis://redis:6379/0
       - DB_PATH=/data/captcha.db

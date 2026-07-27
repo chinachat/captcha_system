@@ -30,6 +30,7 @@ from .stats import get_stats
 from .tokens import create_token, get_token, log_attempt, mark_used
 from .utils import b64_image, create_jwt, decode_jwt, now
 
+
 class CaptchaHandler(BaseHTTPRequestHandler):
     server_version = "CaptchaServer/2.0"
 
@@ -68,7 +69,15 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             return {}
 
     def _client_ip(self):
-        return self.headers.get("X-Forwarded-For", self.client_address[0]).split(",")[0].strip()
+        """获取客户端真实 IP。
+        优先使用 X-Forwarded-For（反向代理场景），但仅在配置了 TRUSTED_PROXIES 时信任该头，
+        防止客户端伪造 IP 绕过限流和失败锁定。
+        """
+        if config.TRUSTED_PROXIES:
+            forwarded = self.headers.get("X-Forwarded-For", "")
+            if forwarded:
+                return forwarded.split(",")[0].strip()
+        return self.client_address[0]
 
     def _ua(self):
         return self.headers.get("User-Agent", "")[:200]
@@ -559,4 +568,3 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             "default_api_key": config.DEFAULT_API_KEY,
             "admin": {"username": config.ADMIN_USER, "password": config.ADMIN_PASS},
         })
-

@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>动态验证码 Demo</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -29,6 +29,7 @@
     .captcha-box {
       position: relative; width: 320px; height: 160px; max-width: 100%;
       margin: 0 auto 12px; background: #e5e7eb; border-radius: 8px; overflow: hidden;
+      touch-action: none;
     }
     .captcha-box img.bg { width: 100%; height: 100%; display: block; object-fit: fill; }
     .captcha-box img.piece {
@@ -38,6 +39,7 @@
     .slider-track {
       position: relative; width: 320px; max-width: 100%; height: 44px;
       margin: 0 auto 12px; background: #f3f4f6; border-radius: 22px; overflow: hidden;
+      touch-action: none;
     }
     .slider-fill {
       position: absolute; left: 0; top: 0; bottom: 0; width: 0;
@@ -47,8 +49,9 @@
       position: absolute; left: 0; top: 0; width: 44px; height: 44px;
       background: white; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
       cursor: grab; display: flex; align-items: center; justify-content: center;
-      font-size: 18px; user-select: none; z-index: 2;
+      font-size: 18px; user-select: none; z-index: 2; touch-action: none;
     }
+    .slider-thumb::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; }
     .slider-tip {
       position: absolute; inset: 0; display: flex; align-items: center;
       justify-content: center; color: #9ca3af; font-size: 13px; pointer-events: none;
@@ -125,6 +128,7 @@
       position: relative; width: 320px; height: 180px; max-width: 100%;
       margin: 0 auto 12px; border-radius: 8px; overflow: hidden;
       cursor: crosshair; background: #e5e7eb; user-select: none;
+      touch-action: none;
     }
     .click-box img { width: 100%; height: 100%; display: block; object-fit: fill; pointer-events: none; }
     .click-marker {
@@ -133,6 +137,15 @@
       font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center;
       pointer-events: none; box-shadow: 0 2px 6px rgba(0,0,0,0.25);
       border: 2px solid white;
+    }
+    @keyframes click-ripple {
+      0% { transform: scale(1); opacity: .6; }
+      100% { transform: scale(4); opacity: 0; }
+    }
+    .click-ripple {
+      position: absolute; width: 16px; height: 16px; margin-left: -8px; margin-top: -8px;
+      border-radius: 50%; background: rgba(79, 70, 229, 0.35); pointer-events: none;
+      animation: click-ripple 0.5s ease-out forwards;
     }
     .modal-status {
       margin-top: 10px; padding: 8px; border-radius: 8px; font-size: 13px;
@@ -220,6 +233,10 @@ let sliderTrack = [], sliderStartTs = 0;
 let clickToken = null, clickChars = [], clickPoints = [], clickNeed = 0;
 let clickTimings = [], clickStartTs = 0;
 
+// 缓存布局参数，防止滑动过程中地址栏变化导致坐标漂移
+let cachedSliderScale = 1;
+let cachedMaxOffset = 276; // 320 - 44
+
 function headers() {
   return { "Content-Type": "application/json", "X-API-Key": API_KEY };
 }
@@ -264,10 +281,26 @@ document.addEventListener("keydown", e => {
 });
 
 /* ========== 滑动 ========== */
-function getScale() {
+function updateSliderLayout() {
   const box = document.getElementById("sliderBox");
-  return (box.getBoundingClientRect().width || ORIG_W) / ORIG_W;
+  const track = document.getElementById("sliderTrack");
+  const piece = document.getElementById("sliderPiece");
+  const boxW = box.getBoundingClientRect().width || ORIG_W;
+  cachedSliderScale = boxW / ORIG_W;
+  if (cachedSliderScale <= 0) cachedSliderScale = 1;
+  const trackW = track.getBoundingClientRect().width || ORIG_W;
+  cachedMaxOffset = Math.max(0, trackW - 44);
+  // 同步更新 piece 尺寸（若已有拼图）
+  if (piece.src && piece.src !== window.location.href) {
+    piece.style.width = (PIECE_BOX * cachedSliderScale) + "px";
+    piece.style.height = (PIECE_BOX * cachedSliderScale) + "px";
+  }
 }
+
+function getScale() {
+  return cachedSliderScale;
+}
+
 function loadSlider() {
   showStatus("加载中...", true);
   fetch("/api/v1/captcha/slider/generate", { method: "POST", headers: headers() })
@@ -284,13 +317,11 @@ function loadSlider() {
       track.style.width = ORIG_W + "px";
       bg.src = d.background;
       piece.src = d.puzzle;
-      requestAnimationFrame(() => {
-        const scale = getScale();
-        piece.style.width = (PIECE_BOX * scale) + "px";
-        piece.style.height = (PIECE_BOX * scale) + "px";
-        piece.style.top = ((d.puzzle_y || 0) * scale) + "px";
-        piece.style.left = "0px";
-      });
+      updateSliderLayout();
+      piece.style.width = (PIECE_BOX * cachedSliderScale) + "px";
+      piece.style.height = (PIECE_BOX * cachedSliderScale) + "px";
+      piece.style.top = ((d.puzzle_y || 0) * cachedSliderScale) + "px";
+      piece.style.left = "0px";
       resetSlider();
       showStatus("验证码已加载，请拖动滑块", true);
     }).catch(e => showStatus("加载失败: " + e.message, false));
@@ -309,6 +340,15 @@ const track = document.getElementById("sliderTrack");
 const fill = document.getElementById("sliderFill");
 const tip = document.getElementById("sliderTip");
 const pieceEl = document.getElementById("sliderPiece");
+
+function removeDragListeners() {
+  document.removeEventListener("mousemove", onDrag);
+  document.removeEventListener("mouseup", endDrag);
+  document.removeEventListener("touchmove", onDrag);
+  document.removeEventListener("touchend", endDrag);
+  document.removeEventListener("touchcancel", endDrag);
+}
+
 thumb.addEventListener("mousedown", startDrag);
 thumb.addEventListener("touchstart", startDrag, { passive: false });
 function startDrag(e) {
@@ -321,12 +361,12 @@ function startDrag(e) {
   document.addEventListener("mouseup", endDrag);
   document.addEventListener("touchmove", onDrag, { passive: false });
   document.addEventListener("touchend", endDrag);
+  document.addEventListener("touchcancel", endDrag);
 }
 function onDrag(e) {
   if (!dragging) return; e.preventDefault();
   const cx = e.touches ? e.touches[0].clientX : e.clientX;
-  const max = Math.max(0, track.getBoundingClientRect().width - 44);
-  let x = Math.max(0, Math.min(cx - startX, max));
+  let x = Math.max(0, Math.min(cx - startX, cachedMaxOffset));
   sliderOffset = x;
   thumb.style.left = x + "px";
   fill.style.width = (x + 22) + "px";
@@ -340,10 +380,7 @@ function onDrag(e) {
 }
 function endDrag() {
   if (!dragging) return; dragging = false;
-  document.removeEventListener("mousemove", onDrag);
-  document.removeEventListener("mouseup", endDrag);
-  document.removeEventListener("touchmove", onDrag);
-  document.removeEventListener("touchend", endDrag);
+  removeDragListeners();
   if (!sliderToken) return;
   const scale = getScale();
   const offsetInOriginal = scale > 0 ? sliderOffset / scale : sliderOffset;
@@ -377,6 +414,10 @@ function endDrag() {
   }).catch(e => showStatus("请求失败: " + e.message, false));
 }
 
+// 监听窗口变化，防止屏幕旋转或地址栏变化导致尺寸错位
+window.addEventListener("resize", updateSliderLayout);
+window.addEventListener("orientationchange", () => setTimeout(updateSliderLayout, 300));
+
 /* ========== 点选（弹窗内） ========== */
 function getClickScale() {
   const box = document.getElementById("clickBox");
@@ -409,6 +450,7 @@ function updateClickProgress() {
 }
 function clearMarkers() {
   document.querySelectorAll("#clickBox .click-marker").forEach(el => el.remove());
+  document.querySelectorAll("#clickBox .click-ripple").forEach(el => el.remove());
 }
 function resetClicks() {
   clickPoints = [];
@@ -418,7 +460,15 @@ function resetClicks() {
   updateClickProgress();
   showModalStatus("已清空，请重新点选", true);
 }
-document.getElementById("clickBox").addEventListener("click", function (e) {
+
+const clickBox = document.getElementById("clickBox");
+
+// 阻止多点触控缩放
+clickBox.addEventListener("touchstart", function (e) {
+  if (e.touches.length > 1) e.preventDefault();
+}, { passive: false });
+
+clickBox.addEventListener("click", function (e) {
   if (!clickToken || clickPoints.length >= clickNeed) return;
   const rect = this.getBoundingClientRect();
   const scale = getClickScale();
@@ -429,6 +479,14 @@ document.getElementById("clickBox").addEventListener("click", function (e) {
   clickPoints.push({ x: Math.round(ox * 10) / 10, y: Math.round(oy * 10) / 10 });
   if (!clickStartTs) clickStartTs = performance.now();
   clickTimings.push(Math.round(performance.now() - clickStartTs));
+
+  // 涟漪反馈
+  const ripple = document.createElement("div");
+  ripple.className = "click-ripple";
+  ripple.style.left = dx + "px";
+  ripple.style.top = dy + "px";
+  this.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 500);
 
   const marker = document.createElement("div");
   marker.className = "click-marker";
