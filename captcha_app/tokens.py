@@ -11,7 +11,6 @@ from .utils import now
 def create_token(ctype, secret, extra=None, ip="", ua=""):
     token_id = str(uuid.uuid4())
     expires = now() + config.CAPTCHA_EXPIRE_SECONDS
-    extra_json = json.dumps(extra or {})
 
     r = get_redis()
     if r:
@@ -29,10 +28,9 @@ def create_token(ctype, secret, extra=None, ip="", ua=""):
     conn.execute(
         "INSERT INTO captcha_tokens (id, type, secret, extra, created_at, expires_at, ip, user_agent) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (token_id, ctype, secret, extra_json, now(), expires, ip, ua)
+        (token_id, ctype, secret, json.dumps(extra or {}), now(), expires, ip, ua)
     )
     conn.commit()
-    conn.close()
     return token_id
 
 
@@ -49,7 +47,7 @@ def get_token(token_id):
                     "secret": data["secret"],
                     "extra": json.dumps(data.get("extra") or {}),
                     "used": data.get("used", 0),
-                    "expires_at": now() + 10,  # redis 已自动过期，这里给个宽松值
+                    "expires_at": now() + 10,
                     "ip": data.get("ip", ""),
                 }
             return None
@@ -58,24 +56,22 @@ def get_token(token_id):
 
     conn = get_db()
     row = conn.execute("SELECT * FROM captcha_tokens WHERE id = ?", (token_id,)).fetchone()
-    conn.close()
     return dict(row) if row else None
 
 
 def mark_used(token_id):
-    """原子标记 token 为已使用。Redis 场景下使用 Lua 脚本保证原子性。"""
     r = get_redis()
     if r:
         try:
-            # Lua 脚本：原子获取 -> 替换 used 标志 -> 保持 TTL
             lua = """
             local key = KEYS[1]
             local raw = redis.call('get', key)
             if not raw then return 0 end
             local ttl = redis.call('ttl', key)
             if ttl <= 0 then ttl = 120 end
-            local updated = string.gsub(raw, '"used"%s*:%s*0', '"used":1')
-            redis.call('setex', key, ttl, updated)
+            local data = cjson.decode(raw)
+            data['used'] = 1
+            redis.call('setex', key, ttl, cjson.encode(data))
             return 1
             """
             result = r.eval(lua, 1, f"captcha:{token_id}")
@@ -87,7 +83,6 @@ def mark_used(token_id):
     conn = get_db()
     conn.execute("UPDATE captcha_tokens SET used = 1 WHERE id = ?", (token_id,))
     conn.commit()
-    conn.close()
 
 
 def log_attempt(token_id, ctype, success, detail, ip="", ua=""):
@@ -98,12 +93,11 @@ def log_attempt(token_id, ctype, success, detail, ip="", ua=""):
         (token_id, ctype, 1 if success else 0, detail, ip, ua, now())
     )
     conn.commit()
-    conn.close()
 
 
 def cleanup_expired():
+    t = now()
     conn = get_db()
-    conn.execute("DELETE FROM captcha_tokens WHERE expires_at < ? OR used = 1", (now() - 3600,))
-    conn.execute("DELETE FROM captcha_logs WHERE created_at < ?", (now() - 7 * 86400,))
+    conn.execute("DELETE FROM captcha_tokens WHERE expires_at < ? OR used = 1", (t - 3600,))
+    conn.execute("DELETE FROM captcha_logs WHERE created_at < ?", (t - 7 * 86400,))
     conn.commit()
-    conn.close()

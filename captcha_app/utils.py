@@ -27,8 +27,9 @@ def random_color(low=40, high=200):
 
 def create_jwt(payload: dict) -> str:
     payload = payload.copy()
-    payload["exp"] = datetime.now(timezone.utc) + timedelta(hours=config.JWT_EXPIRE_HOURS)
-    payload["iat"] = datetime.now(timezone.utc)
+    now_utc = datetime.now(timezone.utc)
+    payload["iat"] = now_utc
+    payload["exp"] = now_utc + timedelta(hours=config.JWT_EXPIRE_HOURS)
     return jwt.encode(payload, config.SECRET_KEY, algorithm="HS256")
 
 

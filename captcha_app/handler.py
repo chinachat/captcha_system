@@ -1,6 +1,7 @@
 """HTTP 请求处理"""
 import hmac
 import json
+import mimetypes
 import os
 import re
 from datetime import datetime
@@ -8,7 +9,6 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 from . import config
-import mimetypes
 from .anti_bot import (
     analyze_click_timing,
     analyze_slider_track,
@@ -36,6 +36,9 @@ class CaptchaHandler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {self.address_string()} {fmt % args}")
+
+    def _path(self):
+        return urlparse(self.path).path.rstrip("/") or "/"
 
     def _send(self, code=200, body=None, content_type="application/json", headers=None):
         if isinstance(body, (dict, list)):
@@ -69,10 +72,6 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             return {}
 
     def _client_ip(self):
-        """获取客户端真实 IP。
-        优先使用 X-Forwarded-For（反向代理场景），但仅在配置了 TRUSTED_PROXIES 时信任该头，
-        防止客户端伪造 IP 绕过限流和失败锁定。
-        """
         if config.TRUSTED_PROXIES:
             forwarded = self.headers.get("X-Forwarded-For", "")
             if forwarded:
@@ -83,7 +82,8 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         return self.headers.get("User-Agent", "")[:200]
 
     def _get_api_key(self):
-        return self.headers.get("X-API-Key") or self.headers.get("Authorization", "").replace("Bearer ", "")
+        auth = self.headers.get("Authorization", "")
+        return self.headers.get("X-API-Key") or auth.replace("Bearer ", "")
 
     def _require_api_key(self):
         key = self._get_api_key()
@@ -107,11 +107,40 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         self._json_error("未登录或登录已过期", 401)
         return False
 
+    def _verify_token(self, token_id, ctype):
+        row = get_token(token_id)
+        if not row:
+            self._json_error("验证码不存在或已失效", 400)
+            return None
+        if row.get("used"):
+            self._json_error("验证码已使用", 400)
+            return None
+        if row.get("expires_at", 0) < now() and not get_redis():
+            self._json_error("验证码已过期", 400)
+            return None
+        if row["type"] != ctype:
+            self._json_error("验证码类型不匹配", 400)
+            return None
+        return row
+
+    def _check_lock(self):
+        ip = self._client_ip()
+        key = self._get_api_key()
+        locked, remain = is_locked(ip, key)
+        if locked:
+            self._send(429, {
+                "ok": False,
+                "msg": f"失败次数过多，请 {remain} 秒后再试",
+                "retry_after": remain,
+            }, headers={"Retry-After": str(remain)})
+            return False
+        return True
+
     def do_OPTIONS(self):
         self._send(204)
 
     def do_GET(self):
-        path = urlparse(self.path).path.rstrip("/") or "/"
+        path = self._path()
         if path in ("/", "/demo"):
             self._serve_demo()
         elif path in ("/admin", "/admin/"):
@@ -141,7 +170,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             self._json_error("Not Found", 404)
 
     def do_POST(self):
-        path = urlparse(self.path).path.rstrip("/") or "/"
+        path = self._path()
         routes = {
             "/api/v1/captcha/slider/generate": self._api_slider_generate,
             "/api/v1/captcha/slider/verify": self._api_slider_verify,
@@ -160,8 +189,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             self._json_error("Not Found", 404)
 
     def do_PUT(self):
-        path = urlparse(self.path).path.rstrip("/") or "/"
-        # /api/v1/admin/keys/{key}/enable  or disable
+        path = self._path()
         m = re.match(r"^/api/v1/admin/keys/([^/]+)/(enable|disable)$", path)
         if m:
             if not self._require_admin():
@@ -173,7 +201,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         self._json_error("Not Found", 404)
 
     def do_DELETE(self):
-        path = urlparse(self.path).path.rstrip("/") or "/"
+        path = self._path()
         m = re.match(r"^/api/v1/admin/keys/([^/]+)$", path)
         if m:
             if not self._require_admin():
@@ -187,17 +215,10 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             return
         self._json_error("Not Found", 404)
 
-    # ---------- 生成（带限流） ----------
     def _check_rl(self):
         ip = self._client_ip()
-        api_key = self._get_api_key()
-        locked, remain = is_locked(ip, api_key)
-        if locked:
-            self._send(429, {
-                "ok": False,
-                "msg": f"失败次数过多，请 {remain} 秒后再试",
-                "retry_after": remain,
-            }, headers={"Retry-After": str(remain)})
+        key = self._get_api_key()
+        if not self._check_lock():
             return False
         allowed, remaining, reset_in = check_rate_limit(ip, "generate")
         if not allowed:
@@ -214,8 +235,6 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             return
         try:
             bg, piece, puzzle_x, puzzle_y = generate_slider_captcha()
-            # 拼图块画布比缺口大一圈 pad=8，滑块 left / top 需对齐「块的左上角」
-            # 对齐时：piece_left = puzzle_x - pad，piece_top = puzzle_y - pad
             pad = 8
             target_left = puzzle_x - pad
             target_top = puzzle_y - pad
@@ -230,7 +249,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                     "token": token,
                     "background": b64_image(bg),
                     "puzzle": b64_image(piece),
-                    "puzzle_y": target_top,   # 前端直接用作 piece.style.top（原图像素）
+                    "puzzle_y": target_top,
                     "pad": pad,
                     "width": bg.width,
                     "height": bg.height,
@@ -245,15 +264,13 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             return
         ip = self._client_ip()
         api_key = self._get_api_key()
-        locked, remain = is_locked(ip, api_key)
-        if locked:
-            self._send(429, {"ok": False, "msg": f"失败次数过多，请 {remain} 秒后再试", "retry_after": remain})
+        if not self._check_lock():
             return
 
         body = self._read_json()
         token_id = body.get("token")
         offset_x = body.get("offset_x")
-        track = body.get("track")          # [{x,t}, ...]
+        track = body.get("track")
         duration_ms = body.get("duration_ms")
         if not token_id or offset_x is None:
             self._json_error("缺少 token 或 offset_x")
@@ -264,21 +281,10 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             self._json_error("offset_x 必须是数字")
             return
 
-        row = get_token(token_id)
-        if not row:
-            self._json_error("验证码不存在或已失效", 400)
-            return
-        if row.get("used"):
-            self._json_error("验证码已使用", 400)
-            return
-        if row.get("expires_at", 0) < now() and not get_redis():
-            self._json_error("验证码已过期", 400)
-            return
-        if row["type"] != "slider":
-            self._json_error("验证码类型不匹配", 400)
+        row = self._verify_token(token_id, "slider")
+        if row is None:
             return
 
-        # 行为分析
         behavior_ok, reason = analyze_slider_track(track, offset_x, duration_ms)
         correct = float(row["secret"])
         pos_ok = abs(offset_x - correct) <= config.SLIDER_TOLERANCE
@@ -299,9 +305,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                 msg = "操作异常，请重新完成滑动"
             self._send(200, {"ok": False, "msg": msg})
 
-
     def _api_text_generate(self):
-        """兼容旧接口：仍返回文字图+code，新业务请用 /click/"""
         if not self._require_api_key() or not self._check_rl():
             return
         try:
@@ -327,18 +331,8 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         if not token_id or not code:
             self._json_error("缺少 token 或 code")
             return
-        row = get_token(token_id)
-        if not row:
-            self._json_error("验证码不存在或已失效", 400)
-            return
-        if row.get("used"):
-            self._json_error("验证码已使用", 400)
-            return
-        if row.get("expires_at", 0) < now() and not get_redis():
-            self._json_error("验证码已过期", 400)
-            return
-        if row["type"] != "text":
-            self._json_error("验证码类型不匹配", 400)
+        row = self._verify_token(token_id, "text")
+        if row is None:
             return
         success = hmac.compare_digest(row["secret"].upper(), code)
         mark_used(token_id)
@@ -354,7 +348,6 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             return
         try:
             img, targets = generate_click_captcha()
-            # secret 存目标列表 JSON
             secret = json.dumps(targets, ensure_ascii=False)
             token = create_token(
                 "click", secret,
@@ -383,31 +376,19 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             return
         ip = self._client_ip()
         api_key = self._get_api_key()
-        locked, remain = is_locked(ip, api_key)
-        if locked:
-            self._send(429, {"ok": False, "msg": f"失败次数过多，请 {remain} 秒后再试", "retry_after": remain})
+        if not self._check_lock():
             return
 
         body = self._read_json()
         token_id = body.get("token")
         points = body.get("points")
-        timings = body.get("timings")  # 各次点击相对毫秒
+        timings = body.get("timings")
         if not token_id or not isinstance(points, list):
             self._json_error("缺少 token 或 points")
             return
 
-        row = get_token(token_id)
-        if not row:
-            self._json_error("验证码不存在或已失效", 400)
-            return
-        if row.get("used"):
-            self._json_error("验证码已使用", 400)
-            return
-        if row.get("expires_at", 0) < now() and not get_redis():
-            self._json_error("验证码已过期", 400)
-            return
-        if row["type"] != "click":
-            self._json_error("验证码类型不匹配", 400)
+        row = self._verify_token(token_id, "click")
+        if row is None:
             return
 
         try:
@@ -425,7 +406,6 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             self._send(200, {"ok": False, "msg": "点击数量不正确"})
             return
 
-        # 时序分析
         timing_ok, timing_reason = analyze_click_timing(timings, points)
 
         tol = 28
@@ -461,7 +441,6 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                 msg = "操作过快，请重新点选"
             self._send(200, {"ok": False, "msg": msg})
 
-
     def _api_admin_login(self):
         body = self._read_json()
         if body.get("username") == config.ADMIN_USER and body.get("password") == config.ADMIN_PASS:
@@ -480,46 +459,30 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         key = create_api_key(name, note)
         self._send(200, {"ok": True, "data": {"key": key, "name": name, "note": note}})
 
-
+    def _serve_template(self, filename, replace_key=False):
+        path = os.path.join(config.TEMPLATE_DIR, filename)
+        if not os.path.exists(path):
+            self._send(200, f"<h1>{filename} missing</h1>", "text/html")
+            return
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        if replace_key:
+            content = content.replace("{{API_KEY}}", config.DEFAULT_API_KEY)
+        self._send(200, content, "text/html; charset=utf-8")
 
     def _serve_guide(self):
-        path = os.path.join(config.TEMPLATE_DIR, "guide.html")
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
-            self._send(200, content, "text/html; charset=utf-8")
-        else:
-            self._send(200, "<h1>guide.html missing</h1>", "text/html")
+        self._serve_template("guide.html")
 
     def _serve_call_docs(self):
-        path = os.path.join(config.TEMPLATE_DIR, "api-docs.html")
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read().replace("{{API_KEY}}", config.DEFAULT_API_KEY)
-            self._send(200, content, "text/html; charset=utf-8")
-        else:
-            self._send(200, "<h1>api-docs.html missing</h1>", "text/html")
+        self._serve_template("api-docs.html", replace_key=True)
 
     def _serve_demo(self):
-        path = os.path.join(config.TEMPLATE_DIR, "demo.html")
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read().replace("{{API_KEY}}", config.DEFAULT_API_KEY)
-            self._send(200, content, "text/html; charset=utf-8")
-        else:
-            self._send(200, "<h1>demo.html missing</h1>", "text/html")
+        self._serve_template("demo.html", replace_key=True)
 
     def _serve_admin_page(self):
-        path = os.path.join(config.TEMPLATE_DIR, "admin.html")
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                self._send(200, f.read(), "text/html; charset=utf-8")
-        else:
-            self._send(200, "<h1>admin.html missing</h1>", "text/html")
-
+        self._serve_template("admin.html")
 
     def _serve_static(self, rel):
-        # 防止路径穿越
         rel = rel.replace("\\", "/").lstrip("/")
         if ".." in rel.split("/"):
             self._json_error("Forbidden", 403)

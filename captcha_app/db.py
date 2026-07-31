@@ -1,18 +1,35 @@
 """SQLite 初始化与连接"""
 import sqlite3
+import threading
 import time
 
 from . import config
 
+_local = threading.local()
+
 
 def get_db():
-    conn = sqlite3.connect(config.DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
+    conn = getattr(_local, "conn", None)
+    if conn is None:
+        conn = sqlite3.connect(config.DB_PATH, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-8000")
+        conn.execute("PRAGMA foreign_keys=ON")
+        _local.conn = conn
     return conn
 
 
 def init_db():
-    conn = get_db()
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=-8000")
+    conn.execute("PRAGMA foreign_keys=ON")
     cur = conn.cursor()
     cur.executescript("""
     CREATE TABLE IF NOT EXISTS captcha_tokens (
@@ -45,6 +62,7 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_tokens_expires ON captcha_tokens(expires_at);
     CREATE INDEX IF NOT EXISTS idx_logs_created ON captcha_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_logs_type ON captcha_logs(type);
     """)
     cur.execute("SELECT COUNT(*) FROM api_keys WHERE key = ?", (config.DEFAULT_API_KEY,))
     if cur.fetchone()[0] == 0:
