@@ -2,6 +2,13 @@ FROM docker.m.daocloud.io/library/python:3.12-slim
 
 WORKDIR /app
 
+# 国内云服务器：将 Debian 软件源切换为阿里云镜像（Debian 12 为 deb822 格式，
+# 兼容旧版 sources.list），避免 apt-get update / fonts-noto-cjk 下载卡死
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' \
+      /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' \
+      /etc/apt/sources.list
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg62-turbo zlib1g \
     fonts-dejavu-core \
