@@ -1,9 +1,14 @@
 /**
  * Captcha Guard（动态验证码）— 前端表单拦截
  *
- * 拦截已启用的表单提交：先弹出验证码（CaptchaSDK），成功后把 pass_token
- * 注入隐藏字段再提交；服务端对 pass_token 做签名/过期/一次性校验。
- * 纯原生 JS，不依赖 jQuery（wp-login.php 未加载 jQuery）。
+ * 兼容三种提交方式：
+ * 1. 标准表单（submit 事件默认提交）
+ * 2. Ajax 主题监听 submit 事件（jQuery .on('submit') 等）
+ * 3. Ajax 主题按钮直连（不触发 submit，按钮点击直接发请求，如 Argon）
+ *
+ * 流程：拦截（submit/click 双通道）→ 弹 CaptchaSDK → 通过后注入隐藏字段
+ * cg_pass_token → 重放原事件（WeakSet 一次性放行）→ 主题处理器/默认提交。
+ * 纯原生 JS，不依赖 jQuery。
  */
 (function () {
   'use strict';
@@ -43,6 +48,19 @@
     document.head.appendChild(s);
   }
 
+  // 表单识别：已知 id 匹配，或兜底（含评论字段的表单，兼容自定义 id 的主题）
+  function isProtectedForm(f) {
+    if (!f || !f.matches) {
+      return false;
+    }
+    for (var i = 0; i < selectors.length; i++) {
+      if (f.matches(selectors[i])) {
+        return true;
+      }
+    }
+    return f.querySelector('textarea[name="comment"], input[name="comment"], input[name="comment_post_ID"]') !== null;
+  }
+
   // 向表单注入隐藏字段（不存在时创建），验证码通过后回填
   function ensureTokenField(form) {
     var h = form.querySelector('input[name="cg_pass_token"]');
@@ -56,7 +74,7 @@
     return h;
   }
 
-  // 已通过验证的表单（一次性标志）：验证完成后的重放事件放行，避免二次拦截
+  // 已通过验证的表单（一次性标志）：重放事件放行，避免二次拦截
   var verifiedSet = (typeof WeakSet !== 'undefined') ? new WeakSet() : null;
 
   function markVerified(form) {
@@ -103,25 +121,23 @@
       consumeVerified(f);
       return;
     }
-    for (var i = 0; i < selectors.length; i++) {
-      if (f.matches(selectors[i])) {
-        e.preventDefault();
-        e.stopPropagation();
-        runVerification(f, function () {
-          markVerified(f);
-          // 重放 submit：主题 Ajax 处理器接管；无处理器时默认提交
-          var ev = new Event('submit', { bubbles: true, cancelable: true });
-          f.dispatchEvent(ev);
-          if (!ev.defaultPrevented) {
-            f.submit();
-          }
-        });
-        return;
-      }
+    if (!isProtectedForm(f)) {
+      return;
     }
+    e.preventDefault();
+    e.stopPropagation();
+    runVerification(f, function () {
+      markVerified(f);
+      // 重放 submit：主题 Ajax 处理器接管；无处理器时默认提交
+      var ev = new Event('submit', { bubbles: true, cancelable: true });
+      f.dispatchEvent(ev);
+      if (!ev.defaultPrevented) {
+        f.submit();
+      }
+    });
   }, true);
 
-  // 通道二：提交按钮点击（主题不触发 submit 事件、直接按钮绑定 Ajax 的场景，如 Argon）
+  // 通道二：提交按钮点击（主题不触发 submit、按钮直连 Ajax 的场景，如 Argon）
   document.addEventListener('click', function (e) {
     var t = e.target;
     if (!t || !t.closest) {
@@ -132,25 +148,20 @@
       return;
     }
     var form = btn.form || t.closest('form');
-    if (!form) {
+    if (!form || !isProtectedForm(form)) {
       return;
     }
     if (isVerified(form)) {
       consumeVerified(form);
       return;
     }
-    for (var i = 0; i < selectors.length; i++) {
-      if (form.matches(selectors[i])) {
-        e.preventDefault();
-        e.stopPropagation();
-        runVerification(form, function () {
-          markVerified(form);
-          // 重放点击：主题的点击处理器执行 Ajax 提交（表单已含 token）；
-          // 无处理器时浏览器默认提交表单 → submit 通道放行
-          btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-        });
-        return;
-      }
-    }
+    e.preventDefault();
+    e.stopPropagation();
+    runVerification(form, function () {
+      markVerified(form);
+      // 重放点击：主题的点击处理器执行 Ajax 提交（表单已含 token）；
+      // 无处理器时浏览器默认提交表单 → submit 通道放行
+      btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    });
   }, true);
 })();
