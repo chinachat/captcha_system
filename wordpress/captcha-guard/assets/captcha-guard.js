@@ -164,4 +164,121 @@
       btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
     });
   }, true);
+
+  // ===== 通道三：请求级拦截（终极兜底）=====
+  // 不依赖表单事件/序列化/按钮结构：包装 XHR 与 fetch，
+  // 拦截发往 admin-ajax.php 的评论提交请求，先完成验证码再附加 cg_pass_token 发送。
+  var cachedToken = null;
+  var verifyQueue = null;
+
+  function isCommentAjaxRequest(url, body) {
+    if (!url || String(url).indexOf('admin-ajax.php') === -1) {
+      return false;
+    }
+    var s = '';
+    if (typeof body === 'string') {
+      s = body;
+    } else if (body && typeof body.get === 'function') { // URLSearchParams / FormData
+      try { s = body.get('action') || ''; } catch (e) {}
+    }
+    return s.indexOf('comment') !== -1 || /action=[^&]*comment/i.test(s);
+  }
+
+  function appendTokenToBody(body, token) {
+    if (!body) {
+      return 'cg_pass_token=' + encodeURIComponent(token);
+    }
+    if (typeof body === 'string') {
+      return body + '&cg_pass_token=' + encodeURIComponent(token);
+    }
+    try { // FormData / URLSearchParams
+      body.append('cg_pass_token', token);
+    } catch (e) {}
+    return body;
+  }
+
+  function ensureCaptchaToken(callback) {
+    if (cachedToken) {
+      var t = cachedToken;
+      cachedToken = null;
+      callback(t);
+      return;
+    }
+    if (verifyQueue) {
+      verifyQueue.push(callback);
+      return;
+    }
+    verifyQueue = [callback];
+    sdkReady(function () {
+      if (!window.CaptchaSDK) {
+        flushQueue(null);
+        return;
+      }
+      CaptchaSDK.verify({
+        apiKey: cfg.apiKey,
+        type: cfg.type,
+        baseUrl: cfg.baseUrl
+      }).then(function (token) {
+        flushQueue(token);
+      }).catch(function (err) {
+        fail(err && err.message);
+        flushQueue(null);
+      });
+    });
+    function flushQueue(token) {
+      var q = verifyQueue;
+      verifyQueue = null;
+      if (token) {
+        cachedToken = token;
+      }
+      (q || []).forEach(function (cb) { cb(token); });
+    }
+  }
+
+  // XHR 拦截
+  (function () {
+    var origOpen = XMLHttpRequest.prototype.open;
+    var origSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      this.__cgUrl = url;
+      return origOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function (body) {
+      if (isCommentAjaxRequest(this.__cgUrl, body)) {
+        var xhr = this;
+        var originalBody = body;
+        ensureCaptchaToken(function (token) {
+          if (token) {
+            origSend.call(xhr, appendTokenToBody(originalBody, token));
+          }
+          // token 为空（验证失败/服务不可用）：不发送，保持 fail-closed
+        });
+        return;
+      }
+      return origSend.call(this, body);
+    };
+  })();
+
+  // fetch 拦截
+  if (typeof window.fetch === 'function') {
+    var origFetch = window.fetch;
+    window.fetch = function (input, init) {
+      var url = (typeof input === 'string') ? input : (input && input.url) || '';
+      var body = (init && init.body) || '';
+      if (isCommentAjaxRequest(url, body)) {
+        return new Promise(function (resolve, reject) {
+          ensureCaptchaToken(function (token) {
+            if (!token) {
+              reject(new Error('captcha failed'));
+              return;
+            }
+            var newInit = Object.assign({}, init || {});
+            newInit.body = appendTokenToBody(body, token);
+            origFetch.call(window, input, newInit).then(resolve, reject);
+          });
+        });
+      }
+      return origFetch.apply(window, arguments);
+    };
+  }
 })();

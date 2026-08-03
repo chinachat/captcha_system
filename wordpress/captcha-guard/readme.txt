@@ -4,7 +4,7 @@ Tags: captcha, security, login, anti-spam, 验证码
 Requires at least: 5.8
 Tested up to: 6.5
 Requires PHP: 7.4
-Stable tag: 1.0.8
+Stable tag: 1.0.9
 License: MIT
 
 对接"动态验证码管理系统"（captcha_system），后台选择滑动/点选/文字验证方式，保护登录、注册、评论、找回密码表单。
@@ -46,6 +46,9 @@ License: MIT
 * API Key 与 PASS_TOKEN_SECRET 以明文保存在 `wp_options`，请确保站点文件与数据库权限安全
 
 == Changelog ==
+
+= 1.0.9 =
+* 新增：请求级拦截（XHR/fetch 包装）——发往 admin-ajax.php 的评论提交请求先完成验证码再自动附加 cg_pass_token，兼容任何主题的 Ajax 提交方式
 
 = 1.0.8 =
 * 修复：评论表单兜底识别（不再依赖 #commentform id）——含评论字段（name="comment"/comment_post_ID）的表单即受保护，兼容自定义 id 的主题
