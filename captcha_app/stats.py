@@ -8,11 +8,19 @@ from .redis_client import get_redis
 from .utils import now
 
 
-def get_stats():
+def get_stats(owner=None):
+    """owner 为 None 时返回全量统计；否则仅统计该用户的 Key。"""
     conn = get_db()
     t = now()
 
-    agg = conn.execute("""
+    # 按归属过滤条件（普通用户只统计自己的 Key）
+    owner_cond = ""
+    owner_args = []
+    if owner:
+        owner_cond = "WHERE l.api_key IN (SELECT key FROM api_keys WHERE owner = ?)"
+        owner_args.append(owner)
+
+    agg = conn.execute(f"""
         SELECT
             COUNT(*)                                           AS total,
             COALESCE(SUM(success), 0)                          AS success,
@@ -21,8 +29,9 @@ def get_stats():
             COALESCE(SUM(CASE WHEN type='click'  THEN 1 END), 0) AS click,
             COALESCE(SUM(CASE WHEN created_at > ? THEN 1 END), 0) AS today,
             COALESCE(SUM(CASE WHEN success = 1 AND created_at > ? THEN 1 END), 0) AS today_success
-        FROM captcha_logs
-    """, (t - 86400, t - 86400)).fetchone()
+        FROM captcha_logs l
+        {owner_cond}
+    """, [t - 86400, t - 86400] + owner_args).fetchone()
 
     total = agg["total"]
     success = agg["success"]
@@ -33,18 +42,19 @@ def get_stats():
     today_ok = agg["today_success"]
 
     recent = conn.execute(
-        "SELECT * FROM captcha_logs ORDER BY created_at DESC LIMIT 50"
+        f"SELECT * FROM captcha_logs l {owner_cond} ORDER BY created_at DESC LIMIT 50",
+        owner_args
     ).fetchall()
 
     # 近 24 小时按小时聚合（单次 GROUP BY 查询）
     hour_cutoff = t - 24 * 3600
-    hour_rows = conn.execute("""
+    hour_rows = conn.execute(f"""
         SELECT CAST(created_at / 3600 AS INTEGER) AS bucket,
                COUNT(*) AS c, COALESCE(SUM(success), 0) AS s
-        FROM captcha_logs
-        WHERE created_at >= ?
+        FROM captcha_logs l
+        {owner_cond + ' AND' if owner_cond else 'WHERE'} created_at >= ?
         GROUP BY bucket ORDER BY bucket
-    """, (hour_cutoff,)).fetchall()
+    """, owner_args + [hour_cutoff]).fetchall()
 
     hour_map = {}
     for r in hour_rows:
@@ -66,13 +76,13 @@ def get_stats():
 
     # 近 7 天按天（单次 GROUP BY 查询）
     day_cutoff = t - 7 * 86400
-    day_rows = conn.execute("""
+    day_rows = conn.execute(f"""
         SELECT CAST(created_at / 86400 AS INTEGER) AS bucket,
                COUNT(*) AS c, COALESCE(SUM(success), 0) AS s
-        FROM captcha_logs
-        WHERE created_at >= ?
+        FROM captcha_logs l
+        {owner_cond + ' AND' if owner_cond else 'WHERE'} created_at >= ?
         GROUP BY bucket ORDER BY bucket
-    """, (day_cutoff,)).fetchall()
+    """, owner_args + [day_cutoff]).fetchall()
 
     day_map = {}
     for r in day_rows:
@@ -93,21 +103,39 @@ def get_stats():
         })
 
     # 按 API Key 聚合（累计；自 v2.3.0 起日志记录 api_key，旧数据无归属）
-    key_rows = conn.execute("""
-        SELECT l.api_key AS key,
-               COALESCE(k.name, '未命名') AS name,
-               COUNT(*) AS total,
-               COALESCE(SUM(l.success), 0) AS success,
-               COALESCE(SUM(CASE WHEN l.created_at > ? THEN 1 ELSE 0 END), 0) AS today,
-               COALESCE(MAX(l.created_at), 0) AS last_active
-        FROM captcha_logs l
-        LEFT JOIN api_keys k ON k.key = l.api_key
-        WHERE l.api_key IS NOT NULL
-        GROUP BY l.api_key
-        ORDER BY total DESC
-    """, (t - 86400,)).fetchall()
+    if owner:
+        key_rows = conn.execute("""
+            SELECT l.api_key AS key,
+                   COALESCE(k.name, '未命名') AS name,
+                   COUNT(*) AS total,
+                   COALESCE(SUM(l.success), 0) AS success,
+                   COALESCE(SUM(CASE WHEN l.created_at > ? THEN 1 ELSE 0 END), 0) AS today,
+                   COALESCE(MAX(l.created_at), 0) AS last_active
+            FROM captcha_logs l
+            LEFT JOIN api_keys k ON k.key = l.api_key
+            WHERE l.api_key IS NOT NULL AND k.owner = ?
+            GROUP BY l.api_key
+            ORDER BY total DESC
+        """, (t - 86400, owner)).fetchall()
+    else:
+        key_rows = conn.execute("""
+            SELECT l.api_key AS key,
+                   COALESCE(k.name, '未命名') AS name,
+                   COUNT(*) AS total,
+                   COALESCE(SUM(l.success), 0) AS success,
+                   COALESCE(SUM(CASE WHEN l.created_at > ? THEN 1 ELSE 0 END), 0) AS today,
+                   COALESCE(MAX(l.created_at), 0) AS last_active
+            FROM captcha_logs l
+            LEFT JOIN api_keys k ON k.key = l.api_key
+            WHERE l.api_key IS NOT NULL
+            GROUP BY l.api_key
+            ORDER BY total DESC
+        """, (t - 86400,)).fetchall()
 
-    keys = list_api_keys()
+    if owner:
+        keys = [k for k in list_api_keys() if k.get("owner") == owner]
+    else:
+        keys = list_api_keys()
     return {
         "total": total,
         "success": success,

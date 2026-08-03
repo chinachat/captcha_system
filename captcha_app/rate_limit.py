@@ -11,6 +11,12 @@ _rate_lock = threading.Lock()
 _last_cleanup = [0.0]
 _CLEANUP_INTERVAL = 60.0
 
+# 各 action 的每分钟限额（action 未列出时回退 generate 限额）
+_ACTION_LIMITS = {
+    "generate": config.RATE_LIMIT_GENERATE,
+    "login_captcha": config.LOGIN_CAPTCHA_RATE,
+}
+
 
 def _sweep_memory():
     """定期清理已过期的限流条目，防止攻击者用随机 IP 撑爆内存。"""
@@ -30,7 +36,7 @@ def check_rate_limit(ip: str, action: str = "generate") -> tuple:
     _sweep_memory()
     r = get_redis()
     key = f"rl:{action}:{ip}"
-    limit = config.RATE_LIMIT_GENERATE
+    limit = _ACTION_LIMITS.get(action, config.RATE_LIMIT_GENERATE)
     window = config.RATE_LIMIT_WINDOW
 
     if r:

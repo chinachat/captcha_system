@@ -9,6 +9,7 @@ from captcha_app.db import init_db
 from captcha_app.handler import CaptchaHandler
 from captcha_app.redis_client import get_redis
 from captcha_app.tokens import cleanup_expired
+from captcha_app.users import ensure_default_group
 
 
 class CaptchaHTTPServer(ThreadingHTTPServer):
@@ -48,6 +49,7 @@ def run_cleanup_loop():
 def main():
     config.validate_config()
     init_db()
+    ensure_default_group()
     get_redis()
     t = threading.Thread(target=run_cleanup_loop, daemon=True)
     t.start()

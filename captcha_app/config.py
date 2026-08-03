@@ -45,6 +45,9 @@ FAIL_LOCK_SECONDS = int(os.environ.get("FAIL_LOCK_SECONDS", "300"))
 # 管理登录失败锁定（IP 维度）
 LOGIN_LOCK_THRESHOLD = int(os.environ.get("LOGIN_LOCK_THRESHOLD", "5"))
 LOGIN_LOCK_SECONDS = int(os.environ.get("LOGIN_LOCK_SECONDS", "300"))
+# 登录接口验证码（所有登录用户共用，防暴力破解）
+LOGIN_CAPTCHA = os.environ.get("LOGIN_CAPTCHA", "1").lower() in ("1", "true", "yes")
+LOGIN_CAPTCHA_RATE = int(os.environ.get("LOGIN_CAPTCHA_RATE", "10"))
 
 REDIS_URL = os.environ.get("REDIS_URL", "")
 

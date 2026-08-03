@@ -157,7 +157,11 @@
     <div class="login-box">
       <h2>验证码管理仪表盘</h2>
       <input type="text" id="username" placeholder="用户名" value="admin">
-      <input type="password" id="password" placeholder="密码" value="admin123">
+      <input type="password" id="password" placeholder="密码" value="">
+      <div id="loginCaptchaRow" style="display:none;align-items:center;gap:8px">
+        <img id="loginCaptchaImg" alt="验证码" title="点击刷新验证码" style="height:44px;border-radius:6px;cursor:pointer;border:1px solid var(--border)">
+        <input type="text" id="loginCaptchaCode" placeholder="验证码" maxlength="8" autocomplete="off">
+      </div>
       <button onclick="doLogin()">登录</button>
       <div class="err" id="loginErr"></div>
     </div>
@@ -167,6 +171,7 @@
     <div class="topbar">
       <h1>验证码仪表盘</h1>
       <div class="right">
+        <span class="badge" id="userBadge">—</span>
         <span class="badge live" id="storageBadge">—</span>
         <span class="badge" id="refreshHint">每 15s 刷新</span>
         <a href="/">演示页</a>
@@ -178,6 +183,42 @@
     </div>
 
     <div class="main">
+      <div id="adminPanels" style="display:none">
+        <div class="grid2">
+          <div class="panel">
+            <h3>用户管理 <button class="btn btn-sm" onclick="showCreateUser()">+ 新建用户</button></h3>
+            <div id="createUserForm" style="display:none" class="form-row">
+              <input id="newUserName" placeholder="用户名">
+              <input id="newUserPass" type="password" placeholder="初始密码">
+              <select id="newUserGroup" class="form-input"></select>
+              <button class="btn btn-sm" onclick="createUser()">创建</button>
+              <button class="btn btn-sm btn-gray" onclick="showCreateUser()">取消</button>
+            </div>
+            <div style="overflow-x:auto;max-height:320px">
+              <table>
+                <thead><tr><th>用户名</th><th>用户组</th><th>Key 数/配额</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead>
+                <tbody id="userBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>用户组 <button class="btn btn-sm" onclick="showCreateGroup()">+ 新建组</button></h3>
+            <div id="createGroupForm" style="display:none" class="form-row">
+              <input id="newGroupName" placeholder="组名称">
+              <input id="newGroupQuota" type="number" min="0" placeholder="Key 配额">
+              <button class="btn btn-sm" onclick="createGroup()">创建</button>
+              <button class="btn btn-sm btn-gray" onclick="showCreateGroup()">取消</button>
+            </div>
+            <div style="overflow-x:auto;max-height:320px">
+              <table>
+                <thead><tr><th>组名称</th><th>Key 配额</th><th>成员数</th><th>操作</th></tr></thead>
+                <tbody id="groupBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="kpi" id="kpi"></div>
 
       <div class="grid2">
@@ -214,6 +255,11 @@
           <div id="createKeyForm" style="display:none" class="form-row">
             <input id="newKeyName" placeholder="名称">
             <input id="newKeyNote" placeholder="备注">
+            <div id="newKeyOwnerRow" style="display:none;gap:8px">
+              <select id="newKeyOwner" class="form-input">
+                <option value="">归属用户（默认自己）</option>
+              </select>
+            </div>
             <button class="btn btn-sm" onclick="createKey()">创建</button>
             <button class="btn btn-sm btn-gray" onclick="hideCreateKey()">取消</button>
           </div>
@@ -265,7 +311,13 @@ function escAttr(s) {
 }
 
 let adminToken = localStorage.getItem("admin_token") || "";
+let currentRole = "admin";
+let currentUser = "";
 let timer = null;
+let loginCaptchaToken = "";
+let usersCache = [];
+let groupsCache = [];
+let showEditRow = false;
 
 async function api(path, opts = {}) {
   const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
@@ -275,21 +327,51 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
+/* 登录验证码：加载图片；失败（旧版服务端无此接口）则隐藏验证码区 */
+async function loadLoginCaptcha() {
+  const row = document.getElementById("loginCaptchaRow");
+  try {
+    const res = await fetch("/api/v1/admin/captcha/generate", { method: "POST" });
+    if (!res.ok) throw new Error("http " + res.status);
+    const json = await res.json();
+    if (!json.ok || !json.data) throw new Error("no data");
+    loginCaptchaToken = json.data.token;
+    document.getElementById("loginCaptchaImg").src = json.data.image;
+    document.getElementById("loginCaptchaCode").value = "";
+    row.style.display = "flex";
+  } catch (e) {
+    loginCaptchaToken = "";
+    row.style.display = "none";
+  }
+}
+document.getElementById("loginCaptchaImg").addEventListener("click", loadLoginCaptcha);
+
 async function doLogin() {
   const err = document.getElementById("loginErr");
+  err.style.display = "none";
   try {
-    const json = await api("/api/v1/admin/login", {
-      method: "POST",
-      body: JSON.stringify({
-        username: document.getElementById("username").value,
-        password: document.getElementById("password").value
-      })
-    });
-    if (!json.ok) { err.style.display = "block"; err.textContent = json.msg || "登录失败"; return; }
+    const body = {
+      username: document.getElementById("username").value,
+      password: document.getElementById("password").value
+    };
+    if (loginCaptchaToken) {
+      body.captcha_token = loginCaptchaToken;
+      body.captcha_code = document.getElementById("loginCaptchaCode").value.trim();
+    }
+    const json = await api("/api/v1/admin/login", { method: "POST", body: JSON.stringify(body) });
+    if (!json.ok) {
+      loadLoginCaptcha();
+      err.style.display = "block"; err.textContent = json.msg || "登录失败"; return;
+    }
     adminToken = json.token;
+    currentRole = json.role || "admin";
+    currentUser = json.user || "";
     localStorage.setItem("admin_token", adminToken);
+    localStorage.setItem("cg_role", currentRole);
+    localStorage.setItem("cg_user", currentUser);
     showDash();
   } catch (e) {
+    loadLoginCaptcha();
     err.style.display = "block"; err.textContent = e.message;
   }
 }
@@ -297,15 +379,23 @@ async function doLogin() {
 function logout() {
   adminToken = "";
   localStorage.removeItem("admin_token");
+  localStorage.removeItem("cg_role");
+  localStorage.removeItem("cg_user");
   if (timer) clearInterval(timer);
   document.getElementById("loginView").style.display = "flex";
   document.getElementById("dashView").style.display = "none";
+  loadLoginCaptcha();
 }
 
 function showDash() {
   document.getElementById("loginView").style.display = "none";
   document.getElementById("dashView").style.display = "block";
+  document.getElementById("userBadge").textContent = (currentUser ? currentUser + " · " : "") +
+    (currentRole === "admin" ? "管理员" : "普通用户");
+  document.getElementById("adminPanels").style.display = currentRole === "admin" ? "block" : "none";
+  document.getElementById("newKeyOwnerRow").style.display = currentRole === "admin" ? "flex" : "none";
   loadStats();
+  if (currentRole === "admin") { loadUsers(); loadGroups(); }
   if (timer) clearInterval(timer);
   timer = setInterval(loadStats, 15000);
 }
@@ -316,7 +406,12 @@ function hideCreateKey() { document.getElementById("createKeyForm").style.displa
 async function createKey() {
   const name = document.getElementById("newKeyName").value.trim() || "新 Key";
   const note = document.getElementById("newKeyNote").value.trim();
-  const json = await api("/api/v1/admin/keys", { method: "POST", body: JSON.stringify({ name, note }) });
+  const body = { name, note };
+  if (currentRole === "admin") {
+    const sel = document.getElementById("newKeyOwner");
+    if (sel && sel.value) body.owner = sel.value;
+  }
+  const json = await api("/api/v1/admin/keys", { method: "POST", body: JSON.stringify(body) });
   if (json.ok) {
     alert("已创建 Key：\n" + json.data.key + "\n\n请立即复制保存！");
     hideCreateKey();
@@ -413,6 +508,13 @@ async function loadStats() {
       const c = k.connect || {};
       const cfgRow = (label, field) => {
         const v = String(c[field] || "");
+        if (field === "pass_token_secret" && !v) {
+          return `
+          <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
+            <span style="width:130px;font-size:12px;color:#64748b">PASS_TOKEN_SECRET</span>
+            <code class="cg-cfg">联系管理员获取</code>
+          </div>`;
+        }
         const short = v.slice(0, 8);
         const toggleBtn = v.length > 8
           ? `<button class="btn btn-sm btn-gray" data-toggle="1" onclick="toggleField(${i}, '${field}')">展开</button>`
@@ -457,6 +559,186 @@ async function loadStats() {
       return keyBlock;
     }).join("") || "<p style='color:#8b9bb8'>暂无 Key</p>";
   } catch (e) { console.error(e); }
+}
+
+/* ===== 用户管理（管理员） ===== */
+async function loadUsers() {
+  try {
+    const json = await api("/api/v1/admin/users");
+    if (!json.ok) return;
+    usersCache = json.data || [];
+    const sel = document.getElementById("newUserGroup");
+    const selKey = document.getElementById("newKeyOwner");
+    for (const s of [sel, selKey]) {
+      if (!s) continue;
+      const prev = s.value;
+      s.innerHTML = "";
+      if (s === selKey) {
+        s.appendChild(new Option("归属用户（默认自己）", ""));
+      }
+      (groupsCache.length ? groupsCache : [{ id: "", name: "默认组" }]).forEach(g => {
+        s.appendChild(new Option(esc(g.name || ("组#" + g.id)), g.id));
+      });
+      s.value = prev;
+    }
+    document.getElementById("userBody").innerHTML = usersCache.map((u, i) => `
+      <tr>
+        <td>${esc(u.username)}</td>
+        <td>${esc(u.group_name || "-")}</td>
+        <td>${u.key_count} / ${u.key_quota == null ? "-" : u.key_quota}</td>
+        <td class="${u.enabled ? "ok" : "fail"}">${u.enabled ? "启用" : "禁用"}</td>
+        <td style="color:#8b9bb8;font-size:12px">${u.created_at ? new Date(u.created_at * 1000).toLocaleString("zh-CN") : "-"}</td>
+        <td>
+          <button class="btn btn-sm btn-gray" onclick="showEditUser(${i})">编辑</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteUser('${escAttr(u.username)}')">删除</button>
+        </td>
+      </tr>
+      ${showEditRow ? `
+      <tr id="editUserRow-${i}" style="display:none">
+        <td colspan="6">
+          <input id="editUserPass-${i}" type="password" placeholder="新密码（留空不修改）" class="form-input">
+          <select id="editUserGroup-${i}" class="form-input"></select>
+          <label><input type="checkbox" id="editUserEnabled-${i}"> 启用</label>
+          <button class="btn btn-sm" onclick="saveUser(${i})">保存</button>
+          <button class="btn btn-sm btn-gray" onclick="toggleEditUserRow(${i})">取消</button>
+        </td>
+      </tr>` : ""}
+    `).join("") || "<tr><td colspan='6' style='text-align:center;color:#8b9bb8'>暂无用户</td></tr>";
+  } catch (e) { console.error(e); }
+}
+let showEditRow = false;
+function toggleEditUserRow(idx) {
+  const el = document.getElementById("editUserRow-" + idx);
+  if (el) el.style.display = el.style.display === "none" ? "" : "none";
+}
+function showEditUser(idx) {
+  const u = usersCache[idx];
+  if (!u) return;
+  toggleEditUserRow(idx);
+  const pass = document.getElementById("editUserPass-" + idx);
+  const grp = document.getElementById("editUserGroup-" + idx);
+  const en = document.getElementById("editUserEnabled-" + idx);
+  if (grp) {
+    grp.innerHTML = "";
+    groupsCache.forEach(g => grp.appendChild(new Option(esc(g.name || ("组#" + g.id)), g.id)));
+    grp.value = u.group_id || "";
+  }
+  if (pass) pass.value = "";
+  if (en) en.checked = !!u.enabled;
+}
+async function saveUser(idx) {
+  const u = usersCache[idx];
+  if (!u) return;
+  const pass = document.getElementById("editUserPass-" + idx).value.trim();
+  const grp = document.getElementById("editUserGroup-" + idx).value;
+  const en = document.getElementById("editUserEnabled-" + idx).checked;
+  const body = { group_id: grp || null, enabled: en };
+  if (pass) body.password = pass;
+  const json = await api(`/api/v1/admin/users/${encodeURIComponent(u.username)}`, {
+    method: "PUT", body: JSON.stringify(body)
+  });
+  if (json.ok) { alert("已更新"); loadUsers(); }
+  else alert(json.msg || "更新失败");
+}
+async function deleteUser(username) {
+  if (!confirm("确定删除用户 " + username + "？其 API Key 将一并删除！")) return;
+  const json = await api(`/api/v1/admin/users/${encodeURIComponent(username)}`, { method: "DELETE" });
+  if (!json.ok) alert(json.msg || "删除失败");
+  loadUsers(); loadStats();
+}
+function showCreateUser() {
+  const f = document.getElementById("createUserForm");
+  f.style.display = f.style.display === "flex" ? "none" : "flex";
+  if (f.style.display === "flex") {
+    const sel = document.getElementById("newUserGroup");
+    if (!sel.options.length) {
+      groupsCache.forEach(g => sel.appendChild(new Option(esc(g.name || ("组#" + g.id)), g.id)));
+    }
+  }
+}
+async function createUser() {
+  const username = document.getElementById("newUserName").value.trim();
+  const password = document.getElementById("newUserPass").value;
+  const group_id = document.getElementById("newUserGroup").value;
+  const json = await api("/api/v1/admin/users", {
+    method: "POST", body: JSON.stringify({ username, password, group_id })
+  });
+  if (json.ok) {
+    alert("用户已创建");
+    document.getElementById("newUserName").value = "";
+    document.getElementById("newUserPass").value = "";
+    showCreateUser();
+    loadUsers();
+  } else alert(json.msg || "创建失败");
+}
+
+/* ===== 用户组管理（管理员） ===== */
+async function loadGroups() {
+  try {
+    const json = await api("/api/v1/admin/groups");
+    if (!json.ok) return;
+    groupsCache = json.data || [];
+    document.getElementById("groupBody").innerHTML = groupsCache.map((g, i) => `
+      <tr>
+        <td>${esc(g.name)}</td>
+        <td>${g.key_quota}</td>
+        <td>${g.user_count}</td>
+        <td>
+          <button class="btn btn-sm btn-gray" onclick="showEditGroup(${i})">编辑</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteGroup(${g.id})">删除</button>
+        </td>
+      </tr>
+      <tr id="editGroupRow-${i}" style="display:none">
+        <td colspan="4">
+          <input id="editGroupName-${i}" placeholder="组名称" class="form-input" value="${escAttr(g.name)}">
+          <input id="editGroupQuota-${i}" type="number" min="0" placeholder="配额" class="form-input" value="${g.key_quota}">
+          <button class="btn btn-sm" onclick="saveGroup(${i})">保存</button>
+          <button class="btn btn-sm btn-gray" onclick="document.getElementById('editGroupRow-${i}').style.display='none'">取消</button>
+        </td>
+      </tr>
+    `).join("") || "<tr><td colspan='4' style='text-align:center;color:#8b9bb8'>暂无用户组</td></tr>";
+    // 组列表就绪后刷新用户列表（保证下拉选项完整）
+    if (adminToken && currentRole === "admin") loadUsers();
+  } catch (e) { console.error(e); }
+}
+function showEditGroup(i) {
+  const el = document.getElementById("editGroupRow-" + i);
+  if (el) el.style.display = el.style.display === "none" ? "" : "none";
+}
+async function saveGroup(i) {
+  const g = groupsCache[i];
+  if (!g) return;
+  const body = {
+    name: document.getElementById("editGroupName-" + i).value.trim(),
+    key_quota: parseInt(document.getElementById("editGroupQuota-" + i).value, 10) || 0
+  };
+  const json = await api("/api/v1/admin/groups/" + g.id, { method: "PUT", body: JSON.stringify(body) });
+  if (json.ok) { alert("已更新"); loadGroups(); loadUsers(); }
+  else alert(json.msg || "更新失败");
+}
+async function deleteGroup(id) {
+  if (!confirm("确定删除该用户组？")) return;
+  const json = await api("/api/v1/admin/groups/" + id, { method: "DELETE" });
+  if (!json.ok) alert(json.msg || "删除失败");
+  loadGroups();
+}
+function showCreateGroup() {
+  const f = document.getElementById("createGroupForm");
+  f.style.display = f.style.display === "flex" ? "none" : "flex";
+}
+async function createGroup() {
+  const name = document.getElementById("newGroupName").value.trim();
+  const quota = parseInt(document.getElementById("newGroupQuota").value, 10) || 5;
+  const json = await api("/api/v1/admin/groups", {
+    method: "POST", body: JSON.stringify({ name, key_quota: quota })
+  });
+  if (json.ok) {
+    alert("用户组已创建");
+    document.getElementById("newGroupName").value = "";
+    document.getElementById("newGroupQuota").value = "";
+    showCreateGroup();
+    loadGroups();
+  } else alert(json.msg || "创建失败");
 }
 
 /* 展开/收起连接配置字段（API Key / PASS_TOKEN_SECRET 等长值） */
@@ -522,10 +804,13 @@ function copyConnect(key) {
   const k = (window.__cg_keys || []).find(x => x.key === key);
   if (!k || !k.connect) { alert("未找到该 Key 的配置信息"); return; }
   const c = k.connect;
+  const secret = c.pass_token_secret
+    ? "PASS_TOKEN_SECRET: " + c.pass_token_secret
+    : "PASS_TOKEN_SECRET: （请联系管理员获取）";
   const text = [
     "API 服务地址: " + c.base_url,
     "API Key: " + c.api_key,
-    "PASS_TOKEN_SECRET: " + c.pass_token_secret,
+    secret,
     "",
     "填写位置：WordPress 后台 → 设置 → Captcha Guard"
   ].join("\n");
@@ -551,9 +836,15 @@ function fallbackCopy(text, done) {
   document.body.removeChild(ta);
 }
 
+currentRole = localStorage.getItem("cg_role") || "admin";
+currentUser = localStorage.getItem("cg_user") || "";
 if (adminToken) showDash();
-else document.getElementById("loginView").style.display = "flex";
+else {
+  document.getElementById("loginView").style.display = "flex";
+  loadLoginCaptcha();
+}
 document.getElementById("password").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+document.getElementById("loginCaptchaCode").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
 
 /* ===== 明暗主题切换（默认深色，localStorage 记忆，跟随系统偏好） ===== */
 (function () {

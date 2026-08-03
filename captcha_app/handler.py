@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 from . import config
+from . import users
 from .anti_bot import (
     analyze_click_timing,
     analyze_slider_track,
@@ -30,10 +31,25 @@ from .api_keys import (
     update_api_key,
 )
 from .captcha_gen import generate_click_captcha, generate_slider_captcha, generate_text_captcha
+from .db import get_db
 from .rate_limit import check_rate_limit
 from .redis_client import get_redis
 from .stats import get_stats
 from .tokens import create_token, get_token, log_attempt, mark_used
+from .users import (
+    authenticate_user,
+    count_keys,
+    create_group,
+    create_user,
+    delete_group,
+    delete_user,
+    ensure_default_group,
+    key_quota_for,
+    list_groups,
+    list_users,
+    update_group,
+    update_user,
+)
 from .utils import b64_image, create_jwt, decode_jwt, now
 
 
@@ -130,19 +146,41 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         return True
 
     def _require_admin(self):
+        data = self._auth_data()
+        if data and data.get("role") == "admin":
+            return True
+        self._json_error("需要管理员权限", 401)
+        return False
+
+    def _require_auth(self):
+        """任意已登录用户（管理员或普通用户）。"""
+        data = self._auth_data()
+        if data:
+            return data
+        self._json_error("未登录或登录已过期", 401)
+        return None
+
+    def _auth_data(self):
+        """解析当前登录用户（JWT 或 Cookie），返回 payload 或 None。"""
         auth = self.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
             data = decode_jwt(auth[7:])
-            if data and data.get("role") == "admin":
-                return True
+            if data:
+                return data
         cookie = self.headers.get("Cookie", "")
         m = re.search(r"admin_token=([^;]+)", cookie)
         if m:
-            data = decode_jwt(m.group(1))
-            if data and data.get("role") == "admin":
-                return True
-        self._json_error("未登录或登录已过期", 401)
-        return False
+            return decode_jwt(m.group(1))
+        return None
+
+    def _current_user(self):
+        """当前登录用户名（默认 admin）。"""
+        data = self._auth_data()
+        return data.get("user", config.ADMIN_USER) if data else config.ADMIN_USER
+
+    def _is_admin_request(self):
+        data = self._auth_data()
+        return bool(data and data.get("role") == "admin")
 
     def _verify_token(self, token_id, ctype):
         row = get_token(token_id)
@@ -194,18 +232,30 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                 "rate_limit": config.RATE_LIMIT_GENERATE,
             })
         elif path == "/api/v1/stats":
-            if self._require_admin():
-                data = get_stats()
+            auth = self._require_auth()
+            if auth:
+                owner = None if auth.get("role") == "admin" else auth.get("user")
+                data = get_stats(owner=owner)
                 # 页面 Key 卡片数据源是 stats，需同步附加插件连接配置
                 for k in data.get("api_keys", []):
-                    k["connect"] = self._key_connect_info(k["key"])
+                    k["connect"] = self._key_connect_info(k["key"], include_secret=auth.get("role") == "admin")
                 self._send(200, {"ok": True, "data": data})
         elif path == "/api/v1/admin/keys":
-            if self._require_admin():
+            if self._require_auth():
                 keys = list_api_keys()
+                if not self._is_admin_request():
+                    # 普通用户仅可见自己的 Key
+                    me = self._current_user()
+                    keys = [k for k in keys if k.get("owner") == me]
                 for k in keys:
-                    k["connect"] = self._key_connect_info(k["key"])
+                    k["connect"] = self._key_connect_info(k["key"], include_secret=self._is_admin_request())
                 self._send(200, {"ok": True, "data": keys})
+        elif path == "/api/v1/admin/users":
+            if self._require_admin():
+                self._send(200, {"ok": True, "data": list_users()})
+        elif path == "/api/v1/admin/groups":
+            if self._require_admin():
+                self._send(200, {"ok": True, "data": list_groups()})
         elif path == "/api/v1/docs":
             self._serve_api_docs()
         elif path.startswith("/static/"):
@@ -225,7 +275,10 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             "/api/v1/captcha/test": self._api_captcha_test,
             "/api/v1/admin/login": self._api_admin_login,
             "/api/v1/admin/logout": lambda: self._send(200, {"ok": True}),
+            "/api/v1/admin/captcha/generate": self._api_login_captcha_generate,
             "/api/v1/admin/keys": self._api_create_key,
+            "/api/v1/admin/users": self._api_create_user,
+            "/api/v1/admin/groups": self._api_create_group,
         }
         handler = routes.get(path)
         if handler:
@@ -233,22 +286,37 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         else:
             self._json_error("Not Found", 404)
 
+    def _can_manage_key(self, key_value):
+        """当前用户是否有权管理该 Key（管理员任意；普通用户仅自己的）。"""
+        me = self._current_user()
+        if self._is_admin_request():
+            return True
+        conn_owner = get_db()
+        row = conn_owner.execute("SELECT owner FROM api_keys WHERE key = ?", (key_value,)).fetchone()
+        return bool(row and row["owner"] == me)
+
     def do_PUT(self):
         path = self._path()
         m = re.match(r"^/api/v1/admin/keys/([^/]+)/(enable|disable)$", path)
         if m:
-            if not self._require_admin():
+            if not self._require_auth():
                 return
             key, action = m.group(1), m.group(2)
+            if not self._can_manage_key(key):
+                self._json_error("无权操作该 Key", 403)
+                return
             ok = set_api_key_enabled(key, action == "enable")
             self._send(200, {"ok": ok, "msg": "已更新" if ok else "Key 不存在"})
             return
         # 编辑 Key（名称/备注）
         m = re.match(r"^/api/v1/admin/keys/([^/]+)$", path)
         if m:
-            if not self._require_admin():
+            if not self._require_auth():
                 return
             key = m.group(1)
+            if not self._can_manage_key(key):
+                self._json_error("无权操作该 Key", 403)
+                return
             body = self._read_json()
             if body is None:
                 return
@@ -257,20 +325,74 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             ok = update_api_key(key, name, note)
             self._send(200, {"ok": ok, "msg": "已更新" if ok else "Key 不存在"})
             return
+        # 编辑用户（管理员）
+        m = re.match(r"^/api/v1/admin/users/([^/]+)$", path)
+        if m:
+            if not self._require_admin():
+                return
+            username = m.group(1)
+            body = self._read_json()
+            if body is None:
+                return
+            password = (body.get("password") or "").strip()
+            group_id = body.get("group_id")
+            enabled = body.get("enabled")
+            ok = update_user(
+                username,
+                password=password if password else None,
+                group_id=group_id if group_id is not None else None,
+                enabled=enabled if enabled is not None else None,
+            )
+            self._send(200, {"ok": ok, "msg": "已更新" if ok else "用户不存在"})
+            return
+        # 编辑用户组（管理员）
+        m = re.match(r"^/api/v1/admin/groups/(\d+)$", path)
+        if m:
+            if not self._require_admin():
+                return
+            gid = int(m.group(1))
+            body = self._read_json()
+            if body is None:
+                return
+            name = (body.get("name") or "").strip()[:32]
+            quota = int(body.get("key_quota") or 0)
+            ok = update_group(gid, name, quota)
+            self._send(200, {"ok": ok, "msg": "已更新" if ok else "组不存在"})
+            return
         self._json_error("Not Found", 404)
 
     def do_DELETE(self):
         path = self._path()
         m = re.match(r"^/api/v1/admin/keys/([^/]+)$", path)
         if m:
-            if not self._require_admin():
+            if not self._require_auth():
                 return
             key = m.group(1)
+            if not self._can_manage_key(key):
+                self._json_error("无权操作该 Key", 403)
+                return
             if key == config.DEFAULT_API_KEY:
                 self._json_error("不能删除默认 Key", 400)
                 return
             ok = delete_api_key(key)
             self._send(200, {"ok": ok, "msg": "已删除" if ok else "Key 不存在"})
+            return
+        # 删除用户（管理员）
+        m = re.match(r"^/api/v1/admin/users/([^/]+)$", path)
+        if m:
+            if not self._require_admin():
+                return
+            username = m.group(1)
+            ok = delete_user(username)
+            self._send(200, {"ok": ok, "msg": "已删除" if ok else "用户不存在"})
+            return
+        # 删除用户组（管理员）
+        m = re.match(r"^/api/v1/admin/groups/(\d+)$", path)
+        if m:
+            if not self._require_admin():
+                return
+            ok, msg = delete_group(int(m.group(1)))
+            self._send(200, {"ok": ok, "msg": msg or "已删除"})
             return
         self._json_error("Not Found", 404)
 
@@ -544,6 +666,32 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                 msg = "操作过快，请重新点选"
             self._send(200, {"ok": False, "msg": msg})
 
+    def _api_login_captcha_generate(self):
+        """登录表单验证码（无需 API Key；按 IP 限流防滥用）。"""
+        ip = self._client_ip()
+        allowed, _, reset_in = check_rate_limit(ip, "login_captcha")
+        if not allowed:
+            self._send(429, {
+                "ok": False,
+                "msg": f"验证码获取过于频繁，请 {reset_in} 秒后再试",
+                "retry_after": reset_in,
+            }, headers={"Retry-After": str(reset_in)})
+            return
+        try:
+            img, code = generate_text_captcha()
+            token = create_token("text", code.upper(), ip=ip, ua=self._ua())
+            self._send(200, {
+                "ok": True,
+                "data": {
+                    "token": token,
+                    "image": b64_image(img),
+                    "expires_in": config.CAPTCHA_EXPIRE_SECONDS,
+                }
+            })
+        except Exception as e:
+            print("[ERROR] login captcha generate:", e)
+            self._json_error("生成失败，请稍后重试", 500)
+
     def _api_admin_login(self):
         body = self._read_json()
         if body is None:
@@ -557,23 +705,66 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                 "retry_after": remain,
             }, headers={"Retry-After": str(remain)})
             return
-        user_ok = hmac.compare_digest(
-            str(body.get("username") or "").encode("utf-8"),
-            config.ADMIN_USER.encode("utf-8"))
-        pass_ok = hmac.compare_digest(
-            str(body.get("password") or "").encode("utf-8"),
-            config.ADMIN_PASS.encode("utf-8"))
-        if user_ok and pass_ok:
+
+        # 登录验证码（默认开启，LOGIN_CAPTCHA=0 关闭）
+        if config.LOGIN_CAPTCHA:
+            captcha_ok = self._check_login_captcha(body)
+            if captcha_ok is not True:
+                self._send(captcha_ok or 400, {"ok": False, "msg": "验证码错误或已过期"})
+                return
+
+        username = str(body.get("username") or "")
+        password = str(body.get("password") or "")
+
+        # 内置管理员
+        if hmac.compare_digest(username.encode("utf-8"), config.ADMIN_USER.encode("utf-8")) and \
+           hmac.compare_digest(password.encode("utf-8"), config.ADMIN_PASS.encode("utf-8")):
             record_login_success(ip)
             token = create_jwt({"role": "admin", "user": config.ADMIN_USER})
-            cookie = f"admin_token={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={config.JWT_EXPIRE_HOURS*3600}"
-            if self.headers.get("X-Forwarded-Proto", "").lower() == "https":
-                cookie += "; Secure"
-            self._send(200, {"ok": True, "token": token, "msg": "登录成功"},
-                       headers={"Set-Cookie": cookie})
-        else:
-            record_login_fail(ip)
-            self._json_error("用户名或密码错误", 401)
+            self._send_login_ok(token, config.ADMIN_USER, "admin")
+            return
+
+        # 普通用户（用户组体系）
+        user = users.authenticate_user(username, password)
+        if user:
+            record_login_success(ip)
+            token = create_jwt({
+                "role": "user",
+                "user": user["username"],
+                "group_id": user["group_id"],
+            })
+            self._send_login_ok(token, user["username"], "user")
+            return
+
+        record_login_fail(ip)
+        self._json_error("用户名或密码错误", 401)
+
+    def _check_login_captcha(self, body):
+        """校验登录验证码：返回 True 或 HTTP 状态码。"""
+        token_id = body.get("captcha_token")
+        code = (body.get("captcha_code") or "").strip().upper()
+        if not token_id or not code:
+            return 400
+        row = get_token(token_id)
+        if not row or row.get("used") or row.get("type") != "text":
+            return 400
+        if row.get("expires_at", 0) < now() and not get_redis():
+            return 400
+        ok = hmac.compare_digest(row["secret"].upper(), code)
+        mark_used(token_id)
+        return True if ok else 400
+
+    def _send_login_ok(self, token, user, role):
+        cookie = f"admin_token={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={config.JWT_EXPIRE_HOURS*3600}"
+        if self.headers.get("X-Forwarded-Proto", "").lower() == "https":
+            cookie += "; Secure"
+        self._send(200, {
+            "ok": True,
+            "token": token,
+            "user": user,
+            "role": role,
+            "msg": "登录成功",
+        }, headers={"Set-Cookie": cookie})
 
     def _request_base_url(self):
         """根据请求推导插件可填写的 API 服务地址（尊重反向代理的 X-Forwarded-Proto）。"""
@@ -583,28 +774,74 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             host = f"{self.client_address[0]}:{getattr(self.server, 'server_port', 8080)}"
         return f"{proto}://{host}"
 
-    def _key_connect_info(self, key):
-        """插件连接配置（仅管理员接口返回；含签名密钥，前端需提示妥善保管）。"""
-        return {
+    def _key_connect_info(self, key, include_secret=True):
+        """插件连接配置（仅管理员接口返回；含签名密钥，前端需提示妥善保管）。
+
+        普通用户不返回 pass_token_secret——该密钥可签发伪造 pass_token，
+        多用户场景下仅管理员可见。
+        """
+        info = {
             "base_url": self._request_base_url(),
             "api_key": key,
-            "pass_token_secret": config.PASS_TOKEN_SECRET,
         }
+        if include_secret:
+            info["pass_token_secret"] = config.PASS_TOKEN_SECRET
+        return info
 
     def _api_create_key(self):
-        if not self._require_admin():
+        if not self._require_auth():
             return
         body = self._read_json()
         if body is None:
             return
         name = (body.get("name") or "新 Key").strip()[:64]
         note = (body.get("note") or "").strip()[:200]
-        owner = (body.get("owner") or "admin").strip()[:64]
+
+        if self._is_admin_request():
+            # 管理员：可指定归属用户，默认自己，不限制数量
+            owner = (body.get("owner") or self._current_user()).strip()[:64]
+        else:
+            # 普通用户：只能为自己创建，受所在组配额限制
+            owner = self._current_user()
+            if count_keys(owner) >= key_quota_for(owner):
+                self._send(403, {"ok": False,
+                                 "msg": f"已达到 API Key 数量上限（{key_quota_for(owner)} 个），请联系管理员"})
+                return
+
         key = create_api_key(name, note, owner)
         self._send(200, {"ok": True, "data": {
             "key": key, "name": name, "note": note, "owner": owner,
-            "connect": self._key_connect_info(key),
+            "connect": self._key_connect_info(key, include_secret=self._is_admin_request()),
         }})
+
+    def _api_create_user(self):
+        if not self._require_admin():
+            return
+        body = self._read_json()
+        if body is None:
+            return
+        username = (body.get("username") or "").strip()[:32]
+        password = (body.get("password") or "").strip()
+        group_id = body.get("group_id") or ensure_default_group()
+        ok, msg, user = create_user(username, password, group_id)
+        if not ok:
+            self._json_error(msg, 400)
+            return
+        self._send(200, {"ok": True, "data": user, "msg": "用户已创建"})
+
+    def _api_create_group(self):
+        if not self._require_admin():
+            return
+        body = self._read_json()
+        if body is None:
+            return
+        name = (body.get("name") or "").strip()[:32]
+        quota = int(body.get("key_quota") or 5)
+        if not name:
+            self._json_error("组名称不能为空", 400)
+            return
+        gid = create_group(name, quota)
+        self._send(200, {"ok": True, "data": {"id": gid, "name": name, "key_quota": max(0, quota)}})
 
     def _serve_template(self, filename, replace_key=False):
         path = os.path.join(config.TEMPLATE_DIR, filename)

@@ -62,6 +62,21 @@ def init_db():
         enabled     INTEGER DEFAULT 1,
         note        TEXT
     );
+    CREATE TABLE IF NOT EXISTS user_groups (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        name        TEXT NOT NULL,
+        key_quota   INTEGER NOT NULL DEFAULT 5,
+        created_at  REAL NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS users (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        username      TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        group_id      INTEGER,
+        enabled       INTEGER DEFAULT 1,
+        created_at    REAL NOT NULL,
+        FOREIGN KEY (group_id) REFERENCES user_groups(id)
+    );
     CREATE INDEX IF NOT EXISTS idx_tokens_expires ON captcha_tokens(expires_at);
     CREATE INDEX IF NOT EXISTS idx_logs_created ON captcha_logs(created_at);
     CREATE INDEX IF NOT EXISTS idx_logs_type ON captcha_logs(type);
