@@ -210,6 +210,16 @@
       </div>
 
       <div class="panel" style="margin-top:14px">
+        <h3>按 API Key 使用（近 24 小时）</h3>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>名称</th><th>API Key</th><th>总请求</th><th>成功</th><th>成功率</th><th>最后活跃</th></tr></thead>
+            <tbody id="keyBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:14px">
         <h3>前端接入插件</h3>
         <div class="plugin-box">
           在业务页面引入 SDK 后一行即可弹出点选/滑动验证：<br><br>
@@ -346,6 +356,7 @@ async function loadStats() {
     const json = await api("/api/v1/stats");
     if (!json.ok) return;
     const d = json.data;
+    window.__cg_keys = d.api_keys || [];
     document.getElementById("storageBadge").textContent = "存储: " + (d.storage || "sqlite");
     document.getElementById("kpi").innerHTML = `
       <div class="card"><div class="label">总验证</div><div class="num accent">${d.total}</div><div class="sub">今日 ${d.today}</div></div>
@@ -371,13 +382,27 @@ async function loadStats() {
       </tr>`;
     }).join("") || "<tr><td colspan='5' style='text-align:center;color:#8b9bb8'>暂无记录</td></tr>";
 
+    document.getElementById("keyBody").innerHTML = (d.by_key || []).map(r => {
+      const rate = r.total ? Math.round(r.success / r.total * 100) : 0;
+      const t = r.last_active ? new Date(r.last_active * 1000).toLocaleString("zh-CN") : "-";
+      return `<tr>
+        <td>${esc(r.name || "-")}</td>
+        <td><code>${esc(r.key || "")}</code></td>
+        <td>${r.total}</td>
+        <td class="ok">${r.success}</td>
+        <td>${rate}%</td>
+        <td style="color:#8b9bb8;font-size:12px">${t}</td>
+      </tr>`;
+    }).join("") || "<tr><td colspan='6' style='text-align:center;color:#8b9bb8'>近 24 小时暂无使用记录</td></tr>";
+
     document.getElementById("apiKeys").innerHTML = (d.api_keys || []).map(k => `
       <div class="key-row">
         <span class="pill ${k.enabled ? "pill-on" : "pill-off"}">${k.enabled ? "启用" : "禁用"}</span>
         <strong>${esc(k.name || "-")}</strong>
         <code>${esc(k.key || "")}</code>
-        <span style="color:#8b9bb8;font-size:12px">${esc(k.note || "")}</span>
+        <span style="color:#8b9bb8;font-size:12px">${esc(k.owner || "")}${k.note ? " · " + esc(k.note) : ""}</span>
         <span style="margin-left:auto">
+          <button class="btn btn-sm btn-gray" onclick="copyConnect('${escAttr(k.key)}')">复制插件配置</button>
           ${k.enabled
             ? `<button class="btn btn-sm btn-gray" onclick="toggleKey('${escAttr(k.key)}', false)">禁用</button>`
             : `<button class="btn btn-sm" onclick="toggleKey('${escAttr(k.key)}', true)">启用</button>`}
@@ -386,6 +411,40 @@ async function loadStats() {
       </div>
     `).join("") || "<p style='color:#8b9bb8'>暂无 Key</p>";
   } catch (e) { console.error(e); }
+}
+
+/* 复制插件连接配置（Key 行按钮） */
+function copyConnect(key) {
+  const k = (window.__cg_keys || []).find(x => x.key === key);
+  if (!k || !k.connect) { alert("未找到该 Key 的配置信息"); return; }
+  const c = k.connect;
+  const text = [
+    "API 服务地址: " + c.base_url,
+    "API Key: " + c.api_key,
+    "PASS_TOKEN_SECRET: " + c.pass_token_secret,
+    "",
+    "填写位置：WordPress 后台 → 设置 → Captcha Guard"
+  ].join("\n");
+  copyText(text, "插件配置已复制，请粘贴到 WordPress 插件设置中");
+}
+
+function copyText(text, tip) {
+  const done = () => { if (tip) alert(tip); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+function fallbackCopy(text, done) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); done(); } catch (e) { alert("复制失败，请手动复制"); }
+  document.body.removeChild(ta);
 }
 
 if (adminToken) showDash();

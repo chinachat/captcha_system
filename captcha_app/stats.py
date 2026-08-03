@@ -92,6 +92,21 @@ def get_stats():
             "fail": c - s,
         })
 
+    # 按 API Key 聚合（近 24 小时）
+    key_cutoff = t - 24 * 3600
+    key_rows = conn.execute("""
+        SELECT l.api_key AS key,
+               COALESCE(k.name, '未命名') AS name,
+               COUNT(*) AS total,
+               COALESCE(SUM(l.success), 0) AS success,
+               COALESCE(MAX(l.created_at), 0) AS last_active
+        FROM captcha_logs l
+        LEFT JOIN api_keys k ON k.key = l.api_key
+        WHERE l.api_key IS NOT NULL AND l.created_at >= ?
+        GROUP BY l.api_key
+        ORDER BY total DESC
+    """, (key_cutoff,)).fetchall()
+
     keys = list_api_keys()
     return {
         "total": total,
@@ -107,6 +122,7 @@ def get_stats():
         "recent": [dict(r) for r in recent],
         "hourly": hourly,
         "daily": daily,
+        "by_key": [dict(r) for r in key_rows],
         "api_keys": keys,
         "rate_limit": {
             "generate_per_min": config.RATE_LIMIT_GENERATE,

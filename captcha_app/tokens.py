@@ -88,13 +88,13 @@ def mark_used(token_id):
         print("[WARN] mark_used failed:", e)
 
 
-def log_attempt(token_id, ctype, success, detail, ip="", ua=""):
+def log_attempt(token_id, ctype, success, detail, ip="", ua="", api_key=""):
     try:
         conn = get_db()
         conn.execute(
-            "INSERT INTO captcha_logs (token_id, type, success, detail, ip, user_agent, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (token_id, ctype, 1 if success else 0, detail, ip, ua, now())
+            "INSERT INTO captcha_logs (token_id, type, success, detail, ip, user_agent, api_key, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (token_id, ctype, 1 if success else 0, detail, ip, ua, api_key, now())
         )
         conn.commit()
     except Exception as e:

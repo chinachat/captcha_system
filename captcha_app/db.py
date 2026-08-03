@@ -51,11 +51,13 @@ def init_db():
         detail      TEXT,
         ip          TEXT,
         user_agent  TEXT,
+        api_key     TEXT,
         created_at  REAL NOT NULL
     );
     CREATE TABLE IF NOT EXISTS api_keys (
         key         TEXT PRIMARY KEY,
         name        TEXT,
+        owner       TEXT DEFAULT 'admin',
         created_at  REAL,
         enabled     INTEGER DEFAULT 1,
         note        TEXT
@@ -64,10 +66,18 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_logs_created ON captcha_logs(created_at);
     CREATE INDEX IF NOT EXISTS idx_logs_type ON captcha_logs(type);
     """)
+    # 旧库迁移：先补列，再补索引（避免旧表缺列时建索引失败）
+    log_cols = [r[1] for r in conn.execute("PRAGMA table_info(captcha_logs)")]
+    if "api_key" not in log_cols:
+        conn.execute("ALTER TABLE captcha_logs ADD COLUMN api_key TEXT")
+    key_cols = [r[1] for r in conn.execute("PRAGMA table_info(api_keys)")]
+    if "owner" not in key_cols:
+        conn.execute("ALTER TABLE api_keys ADD COLUMN owner TEXT DEFAULT 'admin'")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_logs_api_key ON captcha_logs(api_key)")
     cur.execute("SELECT COUNT(*) FROM api_keys WHERE key = ?", (config.DEFAULT_API_KEY,))
     if cur.fetchone()[0] == 0:
         cur.execute(
-            "INSERT INTO api_keys (key, name, created_at, enabled, note) VALUES (?, ?, ?, 1, ?)",
+            "INSERT INTO api_keys (key, name, owner, created_at, enabled, note) VALUES (?, ?, 'admin', ?, 1, ?)",
             (config.DEFAULT_API_KEY, "默认演示 Key", time.time(), "系统自动创建")
         )
     conn.commit()

@@ -197,7 +197,10 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, "data": get_stats()})
         elif path == "/api/v1/admin/keys":
             if self._require_admin():
-                self._send(200, {"ok": True, "data": list_api_keys()})
+                keys = list_api_keys()
+                for k in keys:
+                    k["connect"] = self._key_connect_info(k["key"])
+                self._send(200, {"ok": True, "data": keys})
         elif path == "/api/v1/docs":
             self._serve_api_docs()
         elif path.startswith("/static/"):
@@ -333,7 +336,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
 
         mark_used(token_id)
         detail = f"offset={offset_x},correct={correct},pos={pos_ok},behavior={reason},dur={duration_ms}"
-        log_attempt(token_id, "slider", success, detail, ip, self._ua())
+        log_attempt(token_id, "slider", success, detail, ip, self._ua(), api_key)
 
         if success:
             record_success(ip, api_key)
@@ -395,6 +398,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
     def _api_text_verify(self):
         if not self._require_api_key():
             return
+        api_key = self._get_api_key()
         body = self._read_json()
         if body is None:
             return
@@ -408,7 +412,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             return
         success = hmac.compare_digest(row["secret"].upper(), code)
         mark_used(token_id)
-        log_attempt(token_id, "text", success, f"input={code}", self._client_ip(), self._ua())
+        log_attempt(token_id, "text", success, f"input={code}", self._client_ip(), self._ua(), api_key)
         if success:
             pass_token = create_jwt({"captcha": "passed", "type": "text", "jti": token_id},
                                     expires_seconds=config.PASS_TOKEN_EXPIRE_SECONDS,
@@ -480,7 +484,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             record_fail(ip, api_key)
             log_attempt(token_id, "click", False,
                         f"count_mismatch points={len(points)} need={len(targets)}",
-                        ip, self._ua())
+                        ip, self._ua(), api_key)
             self._send(200, {"ok": False, "msg": "点击数量不正确"})
             return
 
@@ -506,7 +510,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         mark_used(token_id)
         log_attempt(token_id, "click", success,
                     f"{';'.join(details)};timing={timing_reason}",
-                    ip, self._ua())
+                    ip, self._ua(), api_key)
 
         if success:
             record_success(ip, api_key)
@@ -552,6 +556,22 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             record_login_fail(ip)
             self._json_error("用户名或密码错误", 401)
 
+    def _request_base_url(self):
+        """根据请求推导插件可填写的 API 服务地址（尊重反向代理的 X-Forwarded-Proto）。"""
+        proto = self.headers.get("X-Forwarded-Proto", "http").split(",")[0].strip() or "http"
+        host = self.headers.get("Host", "").strip()
+        if not host:
+            host = f"{self.client_address[0]}:{getattr(self.server, 'server_port', 8080)}"
+        return f"{proto}://{host}"
+
+    def _key_connect_info(self, key):
+        """插件连接配置（仅管理员接口返回；含签名密钥，前端需提示妥善保管）。"""
+        return {
+            "base_url": self._request_base_url(),
+            "api_key": key,
+            "pass_token_secret": config.PASS_TOKEN_SECRET,
+        }
+
     def _api_create_key(self):
         if not self._require_admin():
             return
@@ -560,8 +580,12 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             return
         name = (body.get("name") or "新 Key").strip()[:64]
         note = (body.get("note") or "").strip()[:200]
-        key = create_api_key(name, note)
-        self._send(200, {"ok": True, "data": {"key": key, "name": name, "note": note}})
+        owner = (body.get("owner") or "admin").strip()[:64]
+        key = create_api_key(name, note, owner)
+        self._send(200, {"ok": True, "data": {
+            "key": key, "name": name, "note": note, "owner": owner,
+            "connect": self._key_connect_info(key),
+        }})
 
     def _serve_template(self, filename, replace_key=False):
         path = os.path.join(config.TEMPLATE_DIR, filename)

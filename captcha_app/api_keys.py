@@ -17,12 +17,12 @@ def list_api_keys():
     rows = conn.execute("SELECT * FROM api_keys ORDER BY created_at DESC").fetchall()
     return [dict(r) for r in rows]
 
-def create_api_key(name, note=""):
+def create_api_key(name, note="", owner="admin"):
     key = "ak-" + secrets.token_hex(16)
     conn = get_db()
     conn.execute(
-        "INSERT INTO api_keys (key, name, created_at, enabled, note) VALUES (?, ?, ?, 1, ?)",
-        (key, name or "未命名", now(), note or "")
+        "INSERT INTO api_keys (key, name, owner, created_at, enabled, note) VALUES (?, ?, ?, ?, 1, ?)",
+        (key, name or "未命名", owner or "admin", now(), note or "")
     )
     conn.commit()
     return key
