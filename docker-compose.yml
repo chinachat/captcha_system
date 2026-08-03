@@ -15,12 +15,12 @@ services:
       - HOST=0.0.0.0
       - PORT=8080
       - ENV=production
-      # 以下凭据从 .env 读取（.env 不入库，修改后 docker compose up -d 生效）
-      # 缺失时会以 fail-fast 拒绝启动，防止默认凭据上线
-      - SECRET_KEY=${SECRET_KEY:?请在 .env 中设置 SECRET_KEY（openssl rand -hex 32）}
+      # 以下凭据从 .env 读取（.env 不入库，修改后 docker compose up -d 生效）。
+      # 缺失时由应用层 ENV=production 的 fail-fast 校验拒绝启动，防止默认凭据上线
+      - SECRET_KEY=${SECRET_KEY}
       - ADMIN_USER=${ADMIN_USER:-admin}
-      - ADMIN_PASS=${ADMIN_PASS:?请在 .env 中设置 ADMIN_PASS}
-      - DEFAULT_API_KEY=${DEFAULT_API_KEY:?请在 .env 中设置 DEFAULT_API_KEY}
+      - ADMIN_PASS=${ADMIN_PASS}
+      - DEFAULT_API_KEY=${DEFAULT_API_KEY}
       - RATE_LIMIT_GENERATE=30
       - CAPTCHA_EXPIRE=120
       # 可信代理 IP（反向代理场景下填写，仅当请求真实来源 IP 命中时才信任 X-Forwarded-For）
