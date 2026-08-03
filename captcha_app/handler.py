@@ -26,6 +26,7 @@ from .api_keys import (
     check_api_key,
     create_api_key,
     delete_api_key,
+    get_demo_key,
     list_api_keys,
     set_api_key_enabled,
     update_api_key,
@@ -402,7 +403,11 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         key = self._get_api_key()
         if not self._check_lock():
             return False
-        allowed, remaining, reset_in = check_rate_limit(ip, "generate")
+        # 演示 Key 使用独立全局限流（防恶意调用），其余走常规 IP 限流
+        if key and key.startswith("cg-demo-"):
+            allowed, remaining, reset_in = check_rate_limit(ip, "generate_demo", scope_key=key)
+        else:
+            allowed, remaining, reset_in = check_rate_limit(ip, "generate")
         if not allowed:
             self._send(429, {
                 "ok": False,
@@ -877,7 +882,9 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         with open(path, "r", encoding="utf-8") as f:
             content = f.read()
         if replace_key:
-            content = content.replace("{{API_KEY}}", config.DEFAULT_API_KEY)
+            # 页面注入受限的演示 Key（与业务 Key 隔离；页面源码可见但不展示）
+            content = content.replace("{{API_KEY}}", get_demo_key())
+            content = content.replace("{{DEMO_KEY}}", get_demo_key())
         self._send(200, content, "text/html; charset=utf-8")
 
     def _serve_guide(self):

@@ -15,6 +15,7 @@ _CLEANUP_INTERVAL = 60.0
 _ACTION_LIMITS = {
     "generate": config.RATE_LIMIT_GENERATE,
     "login_captcha": config.LOGIN_CAPTCHA_RATE,
+    "generate_demo": config.DEMO_KEY_RATE,
 }
 
 
@@ -31,11 +32,17 @@ def _sweep_memory():
             del _rate_memory[k]
 
 
-def check_rate_limit(ip: str, action: str = "generate") -> tuple:
-    """返回 (allowed, remaining, reset_in)"""
+def check_rate_limit(ip: str, action: str = "generate", scope_key: str = None) -> tuple:
+    """返回 (allowed, remaining, reset_in)
+
+    scope_key 提供时按 Key 全局限流（限流键不含 IP），用于演示 Key 防恶意调用。
+    """
     _sweep_memory()
     r = get_redis()
-    key = f"rl:{action}:{ip}"
+    if scope_key:
+        key = f"rl:{action}:k:{scope_key}"
+    else:
+        key = f"rl:{action}:{ip}"
     limit = _ACTION_LIMITS.get(action, config.RATE_LIMIT_GENERATE)
     window = config.RATE_LIMIT_WINDOW
 

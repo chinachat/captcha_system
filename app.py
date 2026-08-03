@@ -5,6 +5,7 @@ import time
 from http.server import ThreadingHTTPServer
 
 from captcha_app import config
+from captcha_app.api_keys import ensure_demo_key
 from captcha_app.db import init_db
 from captcha_app.handler import CaptchaHandler
 from captcha_app.redis_client import get_redis
@@ -50,6 +51,7 @@ def main():
     config.validate_config()
     init_db()
     ensure_default_group()
+    ensure_demo_key()  # 演示页专用 Key：每次启动轮换（防被长期恶意调用）
     get_redis()
     t = threading.Thread(target=run_cleanup_loop, daemon=True)
     t.start()

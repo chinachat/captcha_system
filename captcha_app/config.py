@@ -33,6 +33,8 @@ MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT", "64"))
 
 RATE_LIMIT_GENERATE = int(os.environ.get("RATE_LIMIT_GENERATE", "30"))
 RATE_LIMIT_WINDOW = 60
+# 演示 Key 独立全局限流（次/分钟，所有 IP 合计；demo 页面专用 Key 的恶意调用防护）
+DEMO_KEY_RATE = int(os.environ.get("DEMO_KEY_RATE", "100"))
 
 SLIDER_MIN_MS = int(os.environ.get("SLIDER_MIN_MS", "280"))
 SLIDER_MAX_MS = int(os.environ.get("SLIDER_MAX_MS", "30000"))

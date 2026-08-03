@@ -5,6 +5,39 @@ from . import config
 from .db import get_db
 from .utils import now
 
+DEMO_PREFIX = "cg-demo-"
+
+
+def ensure_demo_key() -> str:
+    """演示页专用 Key：每次启动轮换（删除旧演示 Key 并生成新的）。
+
+    与业务 Key 隔离：页面不展示、独立全局限流、后台可禁用。
+    """
+    conn = get_db()
+    rows = conn.execute("SELECT key FROM api_keys WHERE key LIKE ?", (DEMO_PREFIX + "%",)).fetchall()
+    for r in rows:
+        conn.execute("DELETE FROM api_keys WHERE key = ?", (r["key"],))
+    key = DEMO_PREFIX + secrets.token_hex(8)
+    conn.execute(
+        "INSERT INTO api_keys (key, name, owner, created_at, enabled, note) "
+        "VALUES (?, ?, 'demo', ?, 1, ?)",
+        (key, "演示页 Key（自动轮换）", now(), "仅供演示页使用，受限流保护"),
+    )
+    conn.commit()
+    return key
+
+
+def get_demo_key() -> str:
+    """获取当前演示 Key；不存在（被删除）时重新生成。"""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT key FROM api_keys WHERE key LIKE ? ORDER BY created_at DESC LIMIT 1",
+        (DEMO_PREFIX + "%",),
+    ).fetchone()
+    if row:
+        return row["key"]
+    return ensure_demo_key()
+
 def check_api_key(key):
     if not key:
         return False

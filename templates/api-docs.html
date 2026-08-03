@@ -355,7 +355,7 @@
                 <code id="baseUrl">—</code>
               </div>
               <div class="env-item">
-                <div class="label">默认 API Key</div>
+                <div class="label">演示 API Key（受限）</div>
                 <code id="apiKey">{{API_KEY}}</code>
               </div>
               <div class="env-item">
@@ -368,9 +368,10 @@
               </div>
             </div>
             <div class="actions">
-              <button class="btn btn-primary" type="button" onclick="copyText(document.getElementById('apiKey').textContent)">复制 API Key</button>
+              <button class="btn btn-primary" type="button" onclick="copyText(document.getElementById('apiKey').textContent)">复制演示 Key</button>
               <button class="btn" type="button" onclick="copyText(base)">复制 Base URL</button>
             </div>
+            <p style="color:#8b9bb8;font-size:12px;margin-top:8px">演示 Key 仅供本站文档/演示页测试（独立全局限流，重启自动轮换）。生产接入请在管理后台创建自己的 API Key。</p>
           </div>
         </div>
       </section>
