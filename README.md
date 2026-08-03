@@ -1,4 +1,4 @@
-# 动态验证码管理系统 v2.4.1
+# 动态验证码管理系统 v2.4.2
 
 纯 Python 实现的验证码服务（无第三方 Web 框架），支持滑动拼图、点选、文字三种验证方式，内置多用户体系、IP 限流、失败锁定与可选 Redis，配套 WordPress 接入插件。
 
@@ -13,6 +13,7 @@
 - **多用户体系**：管理员 / 普通用户双角色、用户组配额、注册默认关闭
 - **登录验证码**：后台登录默认需图片验证码（防暴力破解）
 - **多 API Key 管理**：每 Key 连接配置一键复制、按 Key 使用统计、编辑/禁用/删除
+- **演示页 Key 隔离**：demo/文档页使用自动轮换的受限演示 Key，业务 Key 不在页面泄露
 - **安全**：IP 限流（按 action 独立配额）、失败锁定、pass_token 一次性校验、JWT 固定算法
 - **高可用**：可选 Redis（Token 自动过期 + 多实例共享限流）；线程化服务器 + 连接上限 + 请求体上限
 - **构建友好**：自动选择国内/国际镜像源（基础镜像 + apt + pip）
@@ -134,8 +135,9 @@ docker compose logs -f captcha
 | `MAX_CONCURRENT` | `64` | 最大并发连接（超限拒绝新连接） |
 | `DB_PATH` | `/tmp/captcha_system.db` | SQLite 路径（Docker 用 `/data/captcha.db`） |
 | `REDIS_URL` | 空 | 如 `redis://127.0.0.1:6379/0` |
-| `TRUSTED_PROXIES` | 空 | 可信代理 IP/CIDR，仅命中时才信任 `X-Forwarded-For` |
+| `TRUSTED_PROXIES` | 空 | 可信代理 IP/CIDR，仅命中时才信任 `X-Forwarded-For`（Docker 在 `.env` 配置 `TRUSTED_PROXIES` 注入） |
 | `RATE_LIMIT_GENERATE` | `30` | 生成接口限流（次/分钟/IP） |
+| `DEMO_KEY_RATE` | `100` | 演示 Key 全局限流（次/分钟，所有 IP 合计） |
 | `SLIDER_MIN_MS` / `SLIDER_MAX_MS` / `SLIDER_MIN_TRACK` | `280` / `30000` / `5` | 滑动行为阈值 |
 | `CLICK_MIN_TOTAL_MS` / `CLICK_MIN_GAP_MS` | `600` / `120` | 点选时序阈值 |
 | `FAIL_LOCK_THRESHOLD` / `FAIL_LOCK_SECONDS` | `8` / `300` | 验证失败锁定（IP+Key） |
@@ -258,6 +260,12 @@ POST /api/v1/captcha/validate
 
 **Q: 后台提示"无效或缺失 API Key"？**
 服务端数据库无该 Key（数据库被重置或 Key 被禁用）。后台重新创建 Key 并复制配置；确认 `DB_PATH` 持久化。
+
+**Q: 演示页/文档页的 Key 是什么？会被滥用吗？**
+演示页与文档页使用独立的 `cg-demo-*` 受限 Key：不在页面展示、每次服务重启自动轮换、后台可禁用，并受全局限流（`DEMO_KEY_RATE`，默认 100 次/分钟、所有 IP 合计）保护，换 IP 也无法绕过。业务 Key 不会出现在页面源码中。
+
+**Q: TRUSTED_PROXIES 在 .env 里不生效？**
+Docker 部署时该变量由 compose 注入（`TRUSTED_PROXIES=${TRUSTED_PROXIES:-}`），请确认：① compose 已更新到最新；② `.env` 中已配置；③ `docker compose up -d` 重启过容器（无需重建镜像）。
 
 **Q: 构建卡在 apt-get？**
 用 `./build.sh` 或 `docker compose up -d --build`——镜像内自动探测网络切换阿里云 apt 源 / 清华 pip 源。

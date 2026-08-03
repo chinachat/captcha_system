@@ -171,13 +171,14 @@
     <div class="main">
       <div class="section" id="intro">
         <h2>简介</h2>
-        <p><strong>动态验证码管理系统 v2.4.1</strong> — 纯 Python 实现的验证码服务（无第三方 Web 框架），提供滑动拼图、点选、文字三种验证码，内置 IP 限流、失败锁定、多用户体系与可选 Redis，配套 WordPress 接入插件。</p>
+        <p><strong>动态验证码管理系统 v2.4.2</strong> — 纯 Python 实现的验证码服务（无第三方 Web 框架），提供滑动拼图、点选、文字三种验证码，内置 IP 限流、失败锁定、多用户体系与可选 Redis，配套 WordPress 接入插件。</p>
         <h3>功能总览</h3>
         <ul>
           <li>滑动拼图（轨迹/时序行为校验）、点选（按序点击）、文字（兼容旧接口）三种验证方式</li>
           <li><strong>多用户体系</strong>：管理员 / 普通用户双角色，用户组配额，注册默认关闭</li>
           <li><strong>登录验证码</strong>：后台登录默认需图片验证码（防暴力破解）</li>
           <li>多 API Key 管理、每 Key 连接配置一键复制、按 Key 使用统计</li>
+          <li><strong>演示页 Key 隔离</strong>：demo/文档页使用自动轮换的受限演示 Key，业务 Key 不泄露</li>
           <li>IP 限流（按 action 独立配额）、失败锁定、pass_token 一次性校验</li>
           <li>可选 Redis（Token 自动过期 + 多实例共享限流）；无 Redis 自动回退 SQLite/内存</li>
           <li>构建自动选择国内/国际镜像源（基础镜像 + apt + pip）</li>
@@ -254,6 +255,7 @@ docker compose logs -f captcha</code></pre>
             <tr><td><code>REDIS_URL</code></td><td>空</td><td>如 <code>redis://127.0.0.1:6379/0</code></td></tr>
             <tr><td><code>TRUSTED_PROXIES</code></td><td>空</td><td>可信代理 IP/CIDR，仅命中时才信任 <code>X-Forwarded-For</code></td></tr>
             <tr><td><code>RATE_LIMIT_GENERATE</code></td><td><code>30</code></td><td>生成接口限流（次/分钟/IP）</td></tr>
+            <tr><td><code>DEMO_KEY_RATE</code></td><td><code>100</code></td><td>演示 Key 全局限流（次/分钟，所有 IP 合计）</td></tr>
             <tr><td><code>SLIDER_MIN_MS</code> / <code>SLIDER_MAX_MS</code> / <code>SLIDER_MIN_TRACK</code></td><td><code>280</code> / <code>30000</code> / <code>5</code></td><td>滑动行为阈值</td></tr>
             <tr><td><code>CLICK_MIN_TOTAL_MS</code> / <code>CLICK_MIN_GAP_MS</code></td><td><code>600</code> / <code>120</code></td><td>点选时序阈值</td></tr>
             <tr><td><code>FAIL_LOCK_THRESHOLD</code> / <code>FAIL_LOCK_SECONDS</code></td><td><code>8</code> / <code>300</code></td><td>验证失败锁定（IP+Key 维度）</td></tr>
@@ -434,6 +436,10 @@ POST /api/v1/captcha/text/verify        # body: {"token","code"}</code></pre>
         <p>滑动使用接口返回的 <code>puzzle_y</code> 作为拼图块 top；点选容差 28px（原图像素），前端需按显示宽度换算坐标。</p>
         <h4>Q: 后台提示"无效或缺失 API Key"？</h4>
         <p>服务端数据库无该 Key（多半被重置或 Key 被禁用）。在后台重新创建 Key 并复制配置到接入方；确认 <code>DB_PATH</code> 已持久化。</p>
+        <h4>Q: 演示页/文档页的 Key 会被滥用吗？</h4>
+        <p>演示页与文档页使用独立的 <code>cg-demo-*</code> 受限 Key：不在页面展示、每次服务重启自动轮换、后台可禁用，并受全局限流（<code>DEMO_KEY_RATE</code>，默认 100 次/分钟、所有 IP 合计）保护，换 IP 也无法绕过。业务 Key 不会出现在页面源码中。</p>
+        <h4>Q: TRUSTED_PROXIES 在 .env 里不生效？</h4>
+        <p>Docker 部署时该变量由 compose 注入（<code>TRUSTED_PROXIES=${TRUSTED_PROXIES:-}</code>）：确认 compose 已更新到最新、<code>.env</code> 已配置（如 <code>TRUSTED_PROXIES=127.0.0.1</code>），并执行 <code>docker compose up -d</code> 重启容器（无需重建镜像）。</p>
         <h4>Q: 构建卡在 apt-get？</h4>
         <p>使用 <code>./build.sh</code> 或 <code>docker compose up -d --build</code>——镜像内会自动探测国内网络并切换阿里云 apt 源 / 清华 pip 源；基础镜像源由 <code>build.sh</code> 自动选择。</p>
       </div>
