@@ -56,16 +56,25 @@
     return h;
   }
 
-  // 重放标志：SDK 完成后的 submit 事件放行（交给主题的 Ajax 处理器或默认提交）
-  var replaying = false;
+  // 已通过验证的表单（一次性标志）：验证完成后的重放事件放行，避免二次拦截
+  var verifiedSet = (typeof WeakSet !== 'undefined') ? new WeakSet() : null;
 
-  function interceptSubmit(e, form, tokenField) {
-    e.preventDefault();
-    e.stopPropagation();
+  function markVerified(form) {
+    if (verifiedSet) { verifiedSet.add(form); } else { form.setAttribute('data-cg-passed', '1'); }
+  }
+  function isVerified(form) {
+    if (verifiedSet) { return verifiedSet.has(form); }
+    return form.getAttribute && form.getAttribute('data-cg-passed') === '1';
+  }
+  function consumeVerified(form) {
+    if (verifiedSet) { verifiedSet.delete(form); } else if (form.removeAttribute) { form.removeAttribute('data-cg-passed'); }
+  }
+
+  function runVerification(form, done) {
     sdkReady(function () {
       if (!window.CaptchaSDK) {
         if (cfg.bypassWhenUnavailable) {
-          form.submit();
+          done();
           return;
         }
         fail('验证码服务不可用，请稍后重试');
@@ -76,34 +85,70 @@
         type: cfg.type,
         baseUrl: cfg.baseUrl
       }).then(function (passToken) {
-        tokenField.value = passToken;
-        replaying = true;
-        // 重放 submit 事件：Ajax 主题（如 Argon）由其处理器接管并序列化表单；
-        // 无处理器拦截时走默认提交兜底
-        var ev = new Event('submit', { bubbles: true, cancelable: true });
-        form.dispatchEvent(ev);
-        if (!ev.defaultPrevented) {
-          form.submit();
-        }
+        ensureTokenField(form).value = passToken;
+        done();
       }).catch(function (err) {
         fail(err && err.message);
       });
     });
   }
 
-  // 捕获阶段监听，确保在主题自身 submit 处理前拦截。
+  // 通道一：submit 事件（标准表单 / 主题监听 submit 的 Ajax 表单）
   document.addEventListener('submit', function (e) {
-    if (replaying) {
-      replaying = false;
-      return;
-    }
     var f = e.target;
     if (!f || !f.matches) {
       return;
     }
+    if (isVerified(f)) {
+      consumeVerified(f);
+      return;
+    }
     for (var i = 0; i < selectors.length; i++) {
       if (f.matches(selectors[i])) {
-        interceptSubmit(e, f, ensureTokenField(f));
+        e.preventDefault();
+        e.stopPropagation();
+        runVerification(f, function () {
+          markVerified(f);
+          // 重放 submit：主题 Ajax 处理器接管；无处理器时默认提交
+          var ev = new Event('submit', { bubbles: true, cancelable: true });
+          f.dispatchEvent(ev);
+          if (!ev.defaultPrevented) {
+            f.submit();
+          }
+        });
+        return;
+      }
+    }
+  }, true);
+
+  // 通道二：提交按钮点击（主题不触发 submit 事件、直接按钮绑定 Ajax 的场景，如 Argon）
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.closest) {
+      return;
+    }
+    var btn = t.closest('input[type="submit"], button[type="submit"], #submit, button');
+    if (!btn) {
+      return;
+    }
+    var form = btn.form || t.closest('form');
+    if (!form) {
+      return;
+    }
+    if (isVerified(form)) {
+      consumeVerified(form);
+      return;
+    }
+    for (var i = 0; i < selectors.length; i++) {
+      if (form.matches(selectors[i])) {
+        e.preventDefault();
+        e.stopPropagation();
+        runVerification(form, function () {
+          markVerified(form);
+          // 重放点击：主题的点击处理器执行 Ajax 提交（表单已含 token）；
+          // 无处理器时浏览器默认提交表单 → submit 通道放行
+          btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+        });
         return;
       }
     }
