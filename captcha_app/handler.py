@@ -194,7 +194,11 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             })
         elif path == "/api/v1/stats":
             if self._require_admin():
-                self._send(200, {"ok": True, "data": get_stats()})
+                data = get_stats()
+                # 页面 Key 卡片数据源是 stats，需同步附加插件连接配置
+                for k in data.get("api_keys", []):
+                    k["connect"] = self._key_connect_info(k["key"])
+                self._send(200, {"ok": True, "data": data})
         elif path == "/api/v1/admin/keys":
             if self._require_admin():
                 keys = list_api_keys()
