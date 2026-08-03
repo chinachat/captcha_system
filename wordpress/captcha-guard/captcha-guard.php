@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Captcha Guard（动态验证码）
  * Description: 对接动态验证码管理系统（captcha_system），在后台选择滑动/点选/文字验证方式，保护登录、注册、评论、找回密码等表单。
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: chinachat
  * License: MIT
  * Text Domain: captcha-guard
@@ -14,7 +14,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'CG_VERSION', '1.0.2' );
+define( 'CG_VERSION', '1.0.3' );
 define( 'CG_PLUGIN_FILE', __FILE__ );
 define( 'CG_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CG_PLUGIN_URL', plugin_dir_url( __FILE__ ) );

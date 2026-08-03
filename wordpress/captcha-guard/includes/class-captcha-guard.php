@@ -346,16 +346,24 @@ class Captcha_Guard {
 		if ( '' !== $sdk ) {
 			$host   = wp_parse_url( $sdk, PHP_URL_HOST );
 			$filter = $this->allow_external_host( $host );
-			$head   = wp_remote_head( $sdk, array( 'timeout' => 10, 'redirection' => 3 ) );
+			// 注意：验证码服务（Python http.server）不支持 HEAD，必须用 GET 探测。
+			$resp = wp_remote_get(
+				$sdk,
+				array(
+					'timeout'      => 10,
+					'redirection'  => 3,
+					'blocking'     => true,
+				)
+			);
 			remove_filter( 'http_request_host_is_external', $filter );
-			if ( is_wp_error( $head ) ) {
+			if ( is_wp_error( $resp ) ) {
 				$checks[] = array(
 					'ok'     => false,
 					'label'  => __( 'SDK 脚本', 'captcha-guard' ),
-					'detail' => __( '无法访问：', 'captcha-guard' ) . $head->get_error_message(),
+					'detail' => __( '无法访问：', 'captcha-guard' ) . $resp->get_error_message(),
 				);
 			} else {
-				$hcode = (int) wp_remote_retrieve_response_code( $head );
+				$hcode = (int) wp_remote_retrieve_response_code( $resp );
 				if ( $hcode >= 200 && $hcode < 400 ) {
 					$checks[] = array(
 						'ok'     => true,
@@ -366,7 +374,7 @@ class Captcha_Guard {
 					$checks[] = array(
 						'ok'     => false,
 						'label'  => __( 'SDK 脚本', 'captcha-guard' ),
-						'detail' => 'HTTP ' . $hcode . '，' . __( '请检查 SDK 地址', 'captcha-guard' ),
+						'detail' => 'HTTP ' . $hcode . '，' . __( '请检查 SDK 地址是否正确', 'captcha-guard' ),
 					);
 				}
 			}
