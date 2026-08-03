@@ -35,7 +35,8 @@ class Captcha_Guard_Verify {
 
 		$secret = (string) $this->guard->option( 'pass_token_secret' );
 		if ( '' === $secret ) {
-			return new WP_Error( 'cg_captcha', __( '未配置 pass_token 密钥，请在插件设置中填写验证码服务的 PASS_TOKEN_SECRET。', 'captcha-guard' ) );
+			// 不泄露配置状态，统一返回通用提示；后台"设置 → Captcha Guard"可排查。
+			return new WP_Error( 'cg_captcha', $message );
 		}
 
 		$payload = self::verify_jwt( $token, $secret );

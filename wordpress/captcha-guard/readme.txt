@@ -4,7 +4,7 @@ Tags: captcha, security, login, anti-spam, 验证码
 Requires at least: 5.8
 Tested up to: 6.5
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: MIT
 
 对接"动态验证码管理系统"（captcha_system），后台选择滑动/点选/文字验证方式，保护登录、注册、评论、找回密码表单。
@@ -46,6 +46,12 @@ License: MIT
 * API Key 与 PASS_TOKEN_SECRET 以明文保存在 `wp_options`，请确保站点文件与数据库权限安全
 
 == Changelog ==
+
+= 1.0.1 =
+* 修复：XML-RPC 认证绕过登录验证码（启用登录保护时一律拒绝 XML-RPC 认证）
+* 修复：REST API 创建评论绕过评论验证码（新增 rest_pre_insert_comment 校验）
+* 修复：密钥未配置时错误信息泄露配置状态（统一通用文案）
+* 新增：README.md 与安全评估报告 ASSESSMENT_REPORT.md
 
 = 1.0.0 =
 * 首个版本：三种验证方式选择、四类表单保护、JWT 服务端校验

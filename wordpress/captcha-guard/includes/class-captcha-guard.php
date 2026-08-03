@@ -142,7 +142,10 @@ class Captcha_Guard {
 			add_filter( 'registration_errors', array( $this, 'check_register_captcha' ) );
 		}
 		if ( $this->integration_enabled( 'comment' ) ) {
+			// 表单评论提交路径。
 			add_action( 'pre_comment_on_post', array( $this, 'check_comment_captcha' ) );
+			// REST API 创建评论路径（/wp-json/wp/v2/comments）。
+			add_filter( 'rest_pre_insert_comment', array( $this, 'check_rest_comment_captcha' ), 10, 2 );
 		}
 		if ( $this->integration_enabled( 'lostpassword' ) ) {
 			add_action( 'lostpassword_post', array( $this, 'check_lostpassword_captcha' ) );
@@ -150,7 +153,8 @@ class Captcha_Guard {
 	}
 
 	/**
-	 * 登录校验。仅在 wp-login.php 表单提交路径生效，避免误伤 REST/XML-RPC。
+	 * 登录校验。仅在 wp-login.php 表单提交路径生效；XML-RPC 认证请求一律拒绝
+	 * （XML-RPC 无法携带验证码，是暴力破解的高危入口）。
 	 *
 	 * @param WP_User|WP_Error|null $user     认证结果。
 	 * @param string                $username 用户名。
@@ -158,8 +162,14 @@ class Captcha_Guard {
 	 * @return WP_User|WP_Error
 	 */
 	public function check_login_captcha( $user, $username, $password ) {
+		if ( defined( 'XMLRPC_REQUEST' ) && XMLRPC_REQUEST ) {
+			return new WP_Error(
+				'cg_xmlrpc_blocked',
+				__( 'XML-RPC 登录已被验证码保护禁用，请通过网页登录。', 'captcha-guard' )
+			);
+		}
 		if ( empty( $_POST['log'] ) || empty( $_POST['pwd'] ) ) {
-			// 非 wp-login.php 表单路径（如 REST、XML-RPC），保持原样。
+			// 非 wp-login.php 表单路径（如 REST 认证），保持原样。
 			return $user;
 		}
 		$result = $this->verify()->check( isset( $_POST['cg_pass_token'] ) ? sanitize_text_field( wp_unslash( $_POST['cg_pass_token'] ) ) : '' );
@@ -187,13 +197,28 @@ class Captcha_Guard {
 	}
 
 	/**
-	 * 评论校验。
+	 * 表单评论校验。
 	 */
 	public function check_comment_captcha() {
 		$result = $this->verify()->check( isset( $_POST['cg_pass_token'] ) ? sanitize_text_field( wp_unslash( $_POST['cg_pass_token'] ) ) : '' );
 		if ( is_wp_error( $result ) ) {
 			wp_die( esc_html( $result->get_error_message() ), esc_html__( '安全验证未通过', 'captcha-guard' ), array( 'response' => 403 ) );
 		}
+	}
+
+	/**
+	 * REST API 创建评论校验（返回 WP_Error 时 REST 以 400 响应）。
+	 *
+	 * @param array          $prepared_comment 准备写入的评论数据。
+	 * @param WP_REST_Request $request         当前请求。
+	 * @return array|WP_Error
+	 */
+	public function check_rest_comment_captcha( $prepared_comment, $request ) {
+		$result = $this->verify()->check( $request->get_param( 'cg_pass_token' ) );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return $prepared_comment;
 	}
 
 	/**
