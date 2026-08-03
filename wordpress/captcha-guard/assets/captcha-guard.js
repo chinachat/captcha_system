@@ -77,6 +77,11 @@
   // 已通过验证的表单（一次性标志）：重放事件放行，避免二次拦截
   var verifiedSet = (typeof WeakSet !== 'undefined') ? new WeakSet() : null;
 
+  // 验证码 token 共享缓存（表单通道与请求通道共用，避免重复弹验证码）
+  var cachedToken = null;
+  var cachedTokenAt = 0;
+  var verifyQueue = null;
+
   function markVerified(form) {
     if (verifiedSet) { verifiedSet.add(form); } else { form.setAttribute('data-cg-passed', '1'); }
   }
@@ -104,6 +109,9 @@
         baseUrl: cfg.baseUrl
       }).then(function (passToken) {
         ensureTokenField(form).value = passToken;
+        // 共享缓存：后续的 Ajax 评论请求直接复用，避免二次弹验证码
+        cachedToken = passToken;
+        cachedTokenAt = Date.now();
         done();
       }).catch(function (err) {
         fail(err && err.message);
@@ -143,7 +151,7 @@
     if (!t || !t.closest) {
       return;
     }
-    var btn = t.closest('input[type="submit"], button[type="submit"], #submit, button');
+    var btn = t.closest('input[type="submit"], button[type="submit"], #submit, button:not([type="button"]):not([type="reset"]):not([class*="emoji"]):not([class*="smiley"])');
     if (!btn) {
       return;
     }
@@ -168,8 +176,7 @@
   // ===== 通道三：请求级拦截（终极兜底）=====
   // 不依赖表单事件/序列化/按钮结构：包装 XHR 与 fetch，
   // 拦截发往 admin-ajax.php 的评论提交请求，先完成验证码再附加 cg_pass_token 发送。
-  var cachedToken = null;
-  var verifyQueue = null;
+  var TOKEN_CACHE_MS = 8000; // 缓存 token 最多 8 秒（pass_token 默认 60s 有效，防残留复用）
 
   function isCommentAjaxRequest(url, body) {
     if (!url || String(url).indexOf('admin-ajax.php') === -1) {
@@ -180,6 +187,10 @@
       s = body;
     } else if (body && typeof body.get === 'function') { // URLSearchParams / FormData
       try { s = body.get('action') || ''; } catch (e) {}
+    }
+    // 已携带 token（表单序列化场景）直接放行，避免重复验证
+    if (s.indexOf('cg_pass_token') !== -1) {
+      return false;
     }
     return s.indexOf('comment') !== -1 || /action=[^&]*comment/i.test(s);
   }
@@ -198,12 +209,13 @@
   }
 
   function ensureCaptchaToken(callback) {
-    if (cachedToken) {
+    if (cachedToken && (Date.now() - cachedTokenAt) < TOKEN_CACHE_MS) {
       var t = cachedToken;
       cachedToken = null;
       callback(t);
       return;
     }
+    cachedToken = null;
     if (verifyQueue) {
       verifyQueue.push(callback);
       return;
@@ -230,6 +242,7 @@
       verifyQueue = null;
       if (token) {
         cachedToken = token;
+        cachedTokenAt = Date.now();
       }
       (q || []).forEach(function (cb) { cb(token); });
     }
