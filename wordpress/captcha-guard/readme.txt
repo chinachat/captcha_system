@@ -1,0 +1,51 @@
+=== Captcha Guard（动态验证码） ===
+Contributors: chinachat
+Tags: captcha, security, login, anti-spam, 验证码
+Requires at least: 5.8
+Tested up to: 6.5
+Requires PHP: 7.4
+Stable tag: 1.0.0
+License: MIT
+
+对接"动态验证码管理系统"（captcha_system），后台选择滑动/点选/文字验证方式，保护登录、注册、评论、找回密码表单。
+
+== Description ==
+
+本插件为开源验证码服务 [captcha_system](https://github.com/chinachat/captcha_system) 提供 WordPress 接入：
+
+* 后台选择验证方式：滑动拼图 / 点选 / 文字
+* 保护表单：登录、注册、评论、找回密码（可多选）
+* 前端弹窗式验证（CaptchaSDK），服务端校验 pass_token（JWT HS256 签名 + 过期 + 一次性使用）
+* 无第三方 PHP 依赖，纯 PHP 实现 JWT 校验
+
+== 安装与配置 ==
+
+1. 将插件目录上传到 `/wp-content/plugins/`，在后台启用"Captcha Guard（动态验证码）"。
+2. 部署并启动验证码服务（captcha_system），创建 API Key，记录 `PASS_TOKEN_SECRET`（未单独设置时即 `SECRET_KEY`）。
+3. 进入"设置 → Captcha Guard"：
+   - 启用验证码，选择验证方式（slider / click / text）
+   - 填写验证码服务地址（与 WordPress 同域可留空）
+   - 填写 API Key 与 PASS_TOKEN_SECRET
+   - 勾选需要保护的表单
+4. 保存后在前端测试。
+
+== 常用设置 ==
+
+* **验证方式**：slider（滑动拼图）/ click（点选）/ text（文字）
+* **API Base URL**：验证码服务根地址，如 `https://captcha.example.com`；同域部署可留空
+* **API Key**：验证码服务下发的 Key（会暴露在前端，建议使用专用 Key）
+* **PASS_TOKEN_SECRET**：验证码服务端 `PASS_TOKEN_SECRET`（未单独设置时即其 `SECRET_KEY`），用于校验 pass_token
+* **SDK 脚本地址**：一般留空，默认取 `服务地址 + /static/captcha-sdk.js`
+* **服务不可用时放行**：仅调试用，生产建议关闭
+
+== 安全说明 ==
+
+* pass_token 为短期 JWT（默认 60 秒），服务端校验签名、过期时间与 `captcha=passed` 声明
+* 同一 pass_token（jti）只能使用一次（transient 120 秒）
+* 若验证码服务不可用且未开启"放行"，受保护的表单将拒绝提交（fail-closed）
+* API Key 与 PASS_TOKEN_SECRET 以明文保存在 `wp_options`，请确保站点文件与数据库权限安全
+
+== Changelog ==
+
+= 1.0.0 =
+* 首个版本：三种验证方式选择、四类表单保护、JWT 服务端校验

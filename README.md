@@ -34,6 +34,8 @@ captcha_system/
 ├── templates/
 │   ├── demo.html               # 演示页（滑动 + 点选弹窗）
 │   └── admin.html              # 管理后台
+├── wordpress/
+│   └── captcha-guard/          # WordPress 接入插件（后台选验证方式，保护登录/注册/评论/找回密码）
 ├── fonts/                      # 可选自备中文字体
 ├── Dockerfile
 ├── docker-compose.yml
