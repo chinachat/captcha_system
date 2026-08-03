@@ -210,13 +210,14 @@
       </div>
 
       <div class="panel" style="margin-top:14px">
-        <h3>按 API Key 使用（近 24 小时）</h3>
+        <h3>按 API Key 使用（累计）</h3>
         <div style="overflow-x:auto">
           <table>
-            <thead><tr><th>名称</th><th>API Key</th><th>总请求</th><th>成功</th><th>成功率</th><th>最后活跃</th></tr></thead>
+            <thead><tr><th>名称</th><th>API Key</th><th>总请求</th><th>成功</th><th>成功率</th><th>今日</th><th>最后活跃</th></tr></thead>
             <tbody id="keyBody"></tbody>
           </table>
         </div>
+        <p style="color:#8b9bb8;font-size:12px;margin-top:6px">自 v2.3.0 起记录 Key 归属，更早的历史数据不在统计内。</p>
       </div>
 
       <div class="panel" style="margin-top:14px">
@@ -391,26 +392,58 @@ async function loadStats() {
         <td>${r.total}</td>
         <td class="ok">${r.success}</td>
         <td>${rate}%</td>
+        <td>${r.today || 0}</td>
         <td style="color:#8b9bb8;font-size:12px">${t}</td>
       </tr>`;
-    }).join("") || "<tr><td colspan='6' style='text-align:center;color:#8b9bb8'>近 24 小时暂无使用记录</td></tr>";
+    }).join("") || "<tr><td colspan='7' style='text-align:center;color:#8b9bb8'>暂无使用记录（自 v2.3.0 起统计）</td></tr>";
 
-    document.getElementById("apiKeys").innerHTML = (d.api_keys || []).map(k => `
-      <div class="key-row">
-        <span class="pill ${k.enabled ? "pill-on" : "pill-off"}">${k.enabled ? "启用" : "禁用"}</span>
-        <strong>${esc(k.name || "-")}</strong>
-        <code>${esc(k.key || "")}</code>
-        <span style="color:#8b9bb8;font-size:12px">${esc(k.owner || "")}${k.note ? " · " + esc(k.note) : ""}</span>
-        <span style="margin-left:auto">
-          <button class="btn btn-sm btn-gray" onclick="copyConnect('${escAttr(k.key)}')">复制插件配置</button>
-          ${k.enabled
-            ? `<button class="btn btn-sm btn-gray" onclick="toggleKey('${escAttr(k.key)}', false)">禁用</button>`
-            : `<button class="btn btn-sm" onclick="toggleKey('${escAttr(k.key)}', true)">启用</button>`}
-          <button class="btn btn-sm btn-danger" onclick="deleteKey('${escAttr(k.key)}')">删除</button>
-        </span>
-      </div>
-    `).join("") || "<p style='color:#8b9bb8'>暂无 Key</p>";
+    document.getElementById("apiKeys").innerHTML = (d.api_keys || []).map((k, i) => {
+      const c = k.connect || {};
+      const keyBlock = `
+      <div class="key-block" style="margin-bottom:10px;padding:8px 10px;border:1px solid rgba(128,140,160,.25);border-radius:8px">
+        <div class="key-row">
+          <span class="pill ${k.enabled ? "pill-on" : "pill-off"}">${k.enabled ? "启用" : "禁用"}</span>
+          <strong>${esc(k.name || "-")}</strong>
+          <code>${esc(k.key || "")}</code>
+          <span style="color:#8b9bb8;font-size:12px">${esc(k.owner || "")}${k.note ? " · " + esc(k.note) : ""}</span>
+          <span style="margin-left:auto">
+            ${k.enabled
+              ? `<button class="btn btn-sm btn-gray" onclick="toggleKey('${escAttr(k.key)}', false)">禁用</button>`
+              : `<button class="btn btn-sm" onclick="toggleKey('${escAttr(k.key)}', true)">启用</button>`}
+            <button class="btn btn-sm btn-danger" onclick="deleteKey('${escAttr(k.key)}')">删除</button>
+          </span>
+        </div>
+        <div style="margin-top:8px;font-size:12px;color:#8b9bb8">插件连接配置（WordPress 后台 → 设置 → Captcha Guard）：</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
+          <span style="width:130px;font-size:12px;color:#64748b">API 服务地址</span>
+          <code style="flex:1;min-width:180px">${esc(c.base_url || "-")}</code>
+          <button class="btn btn-sm btn-gray" onclick="copyField(${i}, 'base_url')">复制</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
+          <span style="width:130px;font-size:12px;color:#64748b">API Key</span>
+          <code style="flex:1;min-width:180px">${esc(c.api_key || "-")}</code>
+          <button class="btn btn-sm btn-gray" onclick="copyField(${i}, 'api_key')">复制</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
+          <span style="width:130px;font-size:12px;color:#64748b">PASS_TOKEN_SECRET</span>
+          <code style="flex:1;min-width:180px">${esc(c.pass_token_secret || "-")}</code>
+          <button class="btn btn-sm btn-gray" onclick="copyField(${i}, 'pass_token_secret')">复制</button>
+        </div>
+        <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sm" onclick="copyConnect('${escAttr(k.key)}')">复制全部配置</button>
+          <span style="font-size:12px;color:#b45309">PASS_TOKEN_SECRET 为服务端签名密钥，请妥善保管，勿泄露。</span>
+        </div>
+      </div>`;
+      return keyBlock;
+    }).join("") || "<p style='color:#8b9bb8'>暂无 Key</p>";
   } catch (e) { console.error(e); }
+}
+
+/* 复制单个连接配置字段 */
+function copyField(idx, field) {
+  const k = (window.__cg_keys || [])[idx];
+  if (!k || !k.connect || !k.connect[field]) { alert("未找到配置信息"); return; }
+  copyText(String(k.connect[field]), field === "base_url" ? "服务地址已复制" : field + " 已复制");
 }
 
 /* 复制插件连接配置（Key 行按钮） */

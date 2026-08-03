@@ -92,20 +92,20 @@ def get_stats():
             "fail": c - s,
         })
 
-    # 按 API Key 聚合（近 24 小时）
-    key_cutoff = t - 24 * 3600
+    # 按 API Key 聚合（累计；自 v2.3.0 起日志记录 api_key，旧数据无归属）
     key_rows = conn.execute("""
         SELECT l.api_key AS key,
                COALESCE(k.name, '未命名') AS name,
                COUNT(*) AS total,
                COALESCE(SUM(l.success), 0) AS success,
+               COALESCE(SUM(CASE WHEN l.created_at > ? THEN 1 ELSE 0 END), 0) AS today,
                COALESCE(MAX(l.created_at), 0) AS last_active
         FROM captcha_logs l
         LEFT JOIN api_keys k ON k.key = l.api_key
-        WHERE l.api_key IS NOT NULL AND l.created_at >= ?
+        WHERE l.api_key IS NOT NULL
         GROUP BY l.api_key
         ORDER BY total DESC
-    """, (key_cutoff,)).fetchall()
+    """, (t - 86400,)).fetchall()
 
     keys = list_api_keys()
     return {
