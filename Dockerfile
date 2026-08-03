@@ -26,6 +26,7 @@ ENV PORT=8080
 ENV DB_PATH=/data/captcha.db
 ENV ENV=production
 ENV RATE_LIMIT_GENERATE=30
+ENV PYTHONUNBUFFERED=1
 
 # 以非 root 用户运行
 RUN useradd -r -m -d /home/captcha captcha \
