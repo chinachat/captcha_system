@@ -388,7 +388,7 @@ async function loadStats() {
       const t = r.last_active ? new Date(r.last_active * 1000).toLocaleString("zh-CN") : "-";
       return `<tr>
         <td>${esc(r.name || "-")}</td>
-        <td><code>${esc(r.key || "")}</code></td>
+        <td><code style="word-break:break-all">${esc(r.key || "")}</code></td>
         <td>${r.total}</td>
         <td class="ok">${r.success}</td>
         <td>${rate}%</td>
@@ -416,17 +416,18 @@ async function loadStats() {
         <div style="margin-top:8px;font-size:12px;color:#8b9bb8">插件连接配置（WordPress 后台 → 设置 → Captcha Guard）：</div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
           <span style="width:130px;font-size:12px;color:#64748b">API 服务地址</span>
-          <code style="flex:1;min-width:180px">${esc(c.base_url || "-")}</code>
+          <code style="flex:1;min-width:160px;word-break:break-all">${esc(c.base_url || "-")}</code>
           <button class="btn btn-sm btn-gray" onclick="copyField(${i}, 'base_url')">复制</button>
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
           <span style="width:130px;font-size:12px;color:#64748b">API Key</span>
-          <code style="flex:1;min-width:180px">${esc(c.api_key || "-")}</code>
+          <code style="flex:1;min-width:160px;word-break:break-all">${esc(c.api_key || "-")}</code>
           <button class="btn btn-sm btn-gray" onclick="copyField(${i}, 'api_key')">复制</button>
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
           <span style="width:130px;font-size:12px;color:#64748b">PASS_TOKEN_SECRET</span>
-          <code style="flex:1;min-width:180px">${esc(c.pass_token_secret || "-")}</code>
+          <code id="cg-secret-${i}" data-full="0" style="flex:1;min-width:160px;word-break:break-all">${esc(String(c.pass_token_secret || "").slice(0, 8))}…</code>
+          <button class="btn btn-sm btn-gray" data-toggle="1" onclick="toggleSecret(${i})">展开</button>
           <button class="btn btn-sm btn-gray" onclick="copyField(${i}, 'pass_token_secret')">复制</button>
         </div>
         <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -437,6 +438,23 @@ async function loadStats() {
       return keyBlock;
     }).join("") || "<p style='color:#8b9bb8'>暂无 Key</p>";
   } catch (e) { console.error(e); }
+}
+
+/* 展开/收起 PASS_TOKEN_SECRET（避免 64 位密钥撑爆布局） */
+function toggleSecret(idx) {
+  const el = document.getElementById("cg-secret-" + idx);
+  const k = (window.__cg_keys || [])[idx];
+  if (!el || !k || !k.connect) return;
+  const btn = el.parentElement.querySelector("[data-toggle]");
+  if (el.dataset.full === "1") {
+    el.textContent = String(k.connect.pass_token_secret || "").slice(0, 8) + "…";
+    el.dataset.full = "0";
+    if (btn) btn.textContent = "展开";
+  } else {
+    el.textContent = String(k.connect.pass_token_secret || "");
+    el.dataset.full = "1";
+    if (btn) btn.textContent = "收起";
+  }
 }
 
 /* 复制单个连接配置字段 */
