@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 import re
+import uuid
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse
@@ -213,6 +214,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             "/api/v1/captcha/text/verify": self._api_text_verify,
             "/api/v1/captcha/click/generate": self._api_click_generate,
             "/api/v1/captcha/click/verify": self._api_click_verify,
+            "/api/v1/captcha/test": self._api_captcha_test,
             "/api/v1/admin/login": self._api_admin_login,
             "/api/v1/admin/logout": lambda: self._send(200, {"ok": True}),
             "/api/v1/admin/keys": self._api_create_key,
@@ -345,6 +347,31 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             if not behavior_ok and reason in ("slide_too_fast", "too_linear", "missing_track", "track_too_short"):
                 msg = "操作异常，请重新完成滑动"
             self._send(200, {"ok": False, "msg": msg})
+
+    def _api_captcha_test(self):
+        """连接测试：校验 API Key 后，用服务端 PASS_TOKEN_SECRET 签发测试 pass_token。
+
+        调用方（如 WordPress 插件）用自己配置的密钥反向验证该 token，
+        即可确认两端密钥一致。需先升级服务端到 v2.2.0+。
+        """
+        if not self._require_api_key() or not self._check_rl():
+            return
+        try:
+            test_token = create_jwt(
+                {"captcha": "passed", "type": "test", "jti": f"test-{uuid.uuid4()}"},
+                expires_seconds=60,
+                secret=config.PASS_TOKEN_SECRET,
+            )
+        except Exception as e:
+            print("[ERROR] captcha test:", e)
+            self._json_error("测试令牌生成失败", 500)
+            return
+        self._send(200, {"ok": True, "data": {
+            "pass_token": test_token,
+            # 服务端是否显式配置了 PASS_TOKEN_SECRET（否则回退 SECRET_KEY）
+            "server_secret_explicit": bool(os.environ.get("PASS_TOKEN_SECRET", "")),
+            "ts": now(),
+        }})
 
     def _api_text_generate(self):
         if not self._require_api_key() or not self._check_rl():
@@ -598,6 +625,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                 {"method": "POST", "path": "/api/v1/captcha/slider/verify", "body": {"token": "", "offset_x": 0}},
                 {"method": "POST", "path": "/api/v1/captcha/click/generate", "desc": "生成点选验证码"},
                 {"method": "POST", "path": "/api/v1/captcha/click/verify", "body": {"token": "", "points": [{"x":0,"y":0}]}},
+                {"method": "POST", "path": "/api/v1/captcha/test", "desc": "连接测试：校验 API Key 并返回测试 pass_token（v2.2.0+）"},
                 {"method": "POST", "path": "/api/v1/admin/login", "body": {"username": "<admin>", "password": "<your-password>"}},
                 {"method": "GET", "path": "/api/v1/stats", "desc": "统计（需管理员）"},
                 {"method": "GET", "path": "/api/v1/admin/keys", "desc": "列出 API Key"},

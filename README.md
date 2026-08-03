@@ -495,6 +495,37 @@ GET /api/v1/health
 
 ---
 
+### 5.2 连接测试（v2.2.0+）
+
+供接入方（如 WordPress 插件）验证配置：
+
+```http
+POST /api/v1/captcha/test
+X-API-Key: demo-api-key-captcha-2026
+```
+
+**响应示例**
+
+```json
+{
+  "ok": true,
+  "data": {
+    "pass_token": "eyJhbGciOiJIUzI1NiIs...",
+    "server_secret_explicit": false,
+    "ts": 1710000000.0
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `pass_token` | 用服务端 `PASS_TOKEN_SECRET`（未显式设置时回退 `SECRET_KEY`）签发的 60 秒测试 JWT，调用方可用自己配置的密钥反向验证一致性 |
+| `server_secret_explicit` | 服务端是否显式配置了 `PASS_TOKEN_SECRET`（`false` 表示回退 `SECRET_KEY`） |
+
+接口需 API Key 且计入生成限流配额。
+
+---
+
 ### 5.2 滑动拼图 — 生成
 
 ```http

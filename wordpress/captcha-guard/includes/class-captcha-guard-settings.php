@@ -26,6 +26,33 @@ class Captcha_Guard_Settings {
 	public function init() {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin' ) );
+	}
+
+	/**
+	 * 设置页专用资源（仅本页加载）。
+	 *
+	 * @param string $hook 当前后台页面。
+	 */
+	public function enqueue_admin( $hook ) {
+		if ( 'settings_page_captcha-guard' !== $hook ) {
+			return;
+		}
+		wp_enqueue_script(
+			'captcha-guard-admin',
+			CG_PLUGIN_URL . 'assets/captcha-guard-admin.js',
+			array(),
+			CG_VERSION,
+			true
+		);
+		wp_localize_script(
+			'captcha-guard-admin',
+			'CG_TEST',
+			array(
+				'nonce'   => wp_create_nonce( 'captcha_guard_test' ),
+				'ajaxurl' => admin_url( 'admin-ajax.php' ),
+			)
+		);
 	}
 
 	/**
@@ -143,6 +170,13 @@ class Captcha_Guard_Settings {
 				submit_button();
 				?>
 			</form>
+			<div style="margin-top:24px;max-width:640px;">
+				<h2 style="margin-bottom:8px;"><?php esc_html_e( '连接测试', 'captcha-guard' ); ?></h2>
+				<p><?php esc_html_e( '保存设置后点击下方按钮，验证插件与验证码服务的连通性、API Key 有效性及签名密钥是否一致。', 'captcha-guard' ); ?></p>
+				<button type="button" id="cg-test-btn" class="button button-secondary"><?php esc_html_e( '测试连接', 'captcha-guard' ); ?></button>
+				<span id="cg-test-status" style="margin-left:10px;font-weight:600;"></span>
+				<ul id="cg-test-checks" style="margin-top:12px;"></ul>
+			</div>
 		</div>
 		<?php
 	}
