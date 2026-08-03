@@ -27,6 +27,7 @@ from .api_keys import (
     delete_api_key,
     list_api_keys,
     set_api_key_enabled,
+    update_api_key,
 )
 from .captcha_gen import generate_click_captcha, generate_slider_captcha, generate_text_captcha
 from .rate_limit import check_rate_limit
@@ -240,6 +241,20 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                 return
             key, action = m.group(1), m.group(2)
             ok = set_api_key_enabled(key, action == "enable")
+            self._send(200, {"ok": ok, "msg": "已更新" if ok else "Key 不存在"})
+            return
+        # 编辑 Key（名称/备注）
+        m = re.match(r"^/api/v1/admin/keys/([^/]+)$", path)
+        if m:
+            if not self._require_admin():
+                return
+            key = m.group(1)
+            body = self._read_json()
+            if body is None:
+                return
+            name = (body.get("name") or "").strip()[:64]
+            note = (body.get("note") or "").strip()[:200]
+            ok = update_api_key(key, name, note)
             self._send(200, {"ok": ok, "msg": "已更新" if ok else "Key 不存在"})
             return
         self._json_error("Not Found", 404)

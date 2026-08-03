@@ -118,6 +118,7 @@
     .pill-off { background: #7f1d1d; color: #fca5a5; }
     .form-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
     .form-row input { flex: 1; min-width: 120px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+    .form-input { flex: 1; min-width: 140px; margin-right: 8px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
 
     .plugin-box {
       background: var(--bg); border: 1px dashed var(--border); border-radius: 8px;
@@ -429,14 +430,20 @@ async function loadStats() {
         <div class="key-row">
           <span class="pill ${k.enabled ? "pill-on" : "pill-off"}">${k.enabled ? "启用" : "禁用"}</span>
           <strong>${esc(k.name || "-")}</strong>
-          <code>${esc(k.key || "")}</code>
           <span style="color:#8b9bb8;font-size:12px">${esc(k.owner || "")}${k.note ? " · " + esc(k.note) : ""}</span>
           <span style="margin-left:auto">
+            <button class="btn btn-sm btn-gray" onclick="editKey(${i})">编辑</button>
             ${k.enabled
               ? `<button class="btn btn-sm btn-gray" onclick="toggleKey('${escAttr(k.key)}', false)">禁用</button>`
               : `<button class="btn btn-sm" onclick="toggleKey('${escAttr(k.key)}', true)">启用</button>`}
             <button class="btn btn-sm btn-danger" onclick="deleteKey('${escAttr(k.key)}')">删除</button>
           </span>
+        </div>
+        <div id="cg-edit-${i}" style="display:none;margin-top:8px">
+          <input id="cg-edit-name-${i}" class="form-input" placeholder="名称" maxlength="64">
+          <input id="cg-edit-note-${i}" class="form-input" placeholder="备注" maxlength="200">
+          <button class="btn btn-sm" onclick="saveKey(${i})">保存</button>
+          <button class="btn btn-sm btn-gray" onclick="editKey(${i})">取消</button>
         </div>
         <div style="margin-top:8px;font-size:12px;color:#8b9bb8">插件连接配置（WordPress 后台 → 设置 → Captcha Guard）：</div>
         ${cfgRow("API 服务地址", "base_url")}
@@ -467,6 +474,39 @@ function toggleField(idx, field) {
     el.textContent = full;
     el.dataset.full = "1";
     if (btn) btn.textContent = "收起";
+  }
+}
+
+/* 编辑 Key：展开/收起行内编辑区 */
+function editKey(idx) {
+  const form = document.getElementById("cg-edit-" + idx);
+  if (!form) return;
+  if (form.style.display === "block") {
+    form.style.display = "none";
+    return;
+  }
+  const k = (window.__cg_keys || [])[idx];
+  if (!k) return;
+  form.style.display = "block";
+  document.getElementById("cg-edit-name-" + idx).value = k.name || "";
+  document.getElementById("cg-edit-note-" + idx).value = k.note || "";
+}
+
+/* 保存 Key 编辑 */
+async function saveKey(idx) {
+  const k = (window.__cg_keys || [])[idx];
+  if (!k) return;
+  const name = document.getElementById("cg-edit-name-" + idx).value.trim() || "未命名";
+  const note = document.getElementById("cg-edit-note-" + idx).value.trim();
+  const json = await api(`/api/v1/admin/keys/${encodeURIComponent(k.key)}`, {
+    method: "PUT",
+    body: JSON.stringify({ name, note })
+  });
+  if (json.ok) {
+    alert("已更新");
+    loadStats();
+  } else {
+    alert(json.msg || "更新失败");
   }
 }
 

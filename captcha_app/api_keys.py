@@ -36,6 +36,18 @@ def set_api_key_enabled(key, enabled):
     conn.commit()
     return True
 
+def update_api_key(key, name, note):
+    conn = get_db()
+    exists = conn.execute("SELECT 1 FROM api_keys WHERE key = ?", (key,)).fetchone()
+    if not exists:
+        return False
+    conn.execute(
+        "UPDATE api_keys SET name = ?, note = ? WHERE key = ?",
+        (name, note, key)
+    )
+    conn.commit()
+    return True
+
 def delete_api_key(key):
     if key == config.DEFAULT_API_KEY:
         return False
