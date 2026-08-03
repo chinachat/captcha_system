@@ -606,7 +606,6 @@ async function loadUsers() {
     `).join("") || "<tr><td colspan='6' style='text-align:center;color:#8b9bb8'>暂无用户</td></tr>";
   } catch (e) { console.error(e); }
 }
-let showEditRow = false;
 function toggleEditUserRow(idx) {
   const el = document.getElementById("editUserRow-" + idx);
   if (el) el.style.display = el.style.display === "none" ? "" : "none";
