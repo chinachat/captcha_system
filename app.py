@@ -14,6 +14,26 @@ from captcha_app.tokens import cleanup_expired
 class CaptchaHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+    # 最大并发连接数（信号量覆盖整个连接生命周期，超限直接关闭新连接，防连接洪水耗尽线程/句柄）
+    _slots = threading.BoundedSemaphore(config.MAX_CONCURRENT)
+
+    def process_request(self, request, client_address):
+        if not self._slots.acquire(blocking=False):
+            try:
+                request.close()
+            except OSError:
+                pass
+            print(f"[WARN] 并发连接超限({config.MAX_CONCURRENT})，拒绝 {client_address}")
+            return
+        t = threading.Thread(target=self._request_thread, args=(request, client_address))
+        t.daemon = True
+        t.start()
+
+    def _request_thread(self, request, client_address):
+        try:
+            self.process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
 
 
 def run_cleanup_loop():

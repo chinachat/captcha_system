@@ -1,4 +1,4 @@
-# 动态验证码管理系统 v2.1
+# 动态验证码管理系统 v2.1.1
 
 纯 Python 实现的验证码服务，支持：
 
@@ -416,8 +416,10 @@ docker compose build --no-cache --progress=plain 2>&1 | tee build.log
 | `PASS_TOKEN_EXPIRE` | `60` | 业务 pass_token（JWT）有效秒数，与验证码时效分离 |
 | `MAX_BODY_BYTES` | `65536` | 请求体大小上限，防内存耗尽 |
 | `REQUEST_TIMEOUT` | `15` | 单连接请求读取超时（秒），防慢速连接攻击 |
+| `MAX_CONCURRENT` | `64` | 最大并发连接数，超限直接拒绝新连接（防连接洪水） |
 | `DB_PATH` | `/tmp/captcha_system.db` | SQLite 路径 |
 | `REDIS_URL` | 空 | 如 `redis://127.0.0.1:6379/0` |
+| `PASS_TOKEN_SECRET` | 空（回退 `SECRET_KEY`） | 业务 pass_token 独立签发密钥，生产建议单独设置，减小密钥扩散面 |
 | `RATE_LIMIT_GENERATE` | `30` | 每 IP 每分钟生成次数上限 |
 | `SLIDER_MIN_MS` | `280` | 滑动最短耗时（毫秒） |
 | `SLIDER_MIN_TRACK` | `5` | 滑动轨迹最少采样点 |

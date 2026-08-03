@@ -6,6 +6,8 @@ import sys
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8080"))
 SECRET_KEY = os.environ.get("SECRET_KEY", "change-me-in-production-" + secrets.token_hex(8))
+# 业务 pass_token 独立签发密钥（未设置时回退 SECRET_KEY；生产建议单独设置，减小密钥扩散面）
+PASS_TOKEN_SECRET = os.environ.get("PASS_TOKEN_SECRET", SECRET_KEY)
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
 ADMIN_PASS = os.environ.get("ADMIN_PASS", "admin123")
 JWT_EXPIRE_HOURS = 24
@@ -26,6 +28,8 @@ ALLOW_INSECURE_DEFAULTS = os.environ.get("ALLOW_INSECURE_DEFAULTS", "").lower() 
 MAX_BODY_BYTES = int(os.environ.get("MAX_BODY_BYTES", "65536"))
 # 单连接请求读取超时（秒），防 slowloris
 REQUEST_TIMEOUT = float(os.environ.get("REQUEST_TIMEOUT", "15"))
+# 最大并发连接数，超限直接拒绝新连接（防连接洪水耗尽句柄/线程）
+MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT", "64"))
 
 RATE_LIMIT_GENERATE = int(os.environ.get("RATE_LIMIT_GENERATE", "30"))
 RATE_LIMIT_WINDOW = 60

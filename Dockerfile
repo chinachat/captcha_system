@@ -10,15 +10,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir \
-    -i https://pypi.tuna.tsinghua.edu.cn/simple \
-    pillow PyJWT redis
-
 COPY app.py .
+COPY requirements.txt .
 COPY captcha_app/ captcha_app/
 COPY templates/ templates/
 COPY static/ static/
 COPY fonts/ fonts/
+
+RUN pip install --no-cache-dir \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    -r requirements.txt
 
 ENV HOST=0.0.0.0
 ENV PORT=8080

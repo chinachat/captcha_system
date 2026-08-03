@@ -336,7 +336,8 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         if success:
             record_success(ip, api_key)
             pass_token = create_jwt({"captcha": "passed", "type": "slider", "jti": token_id},
-                                    expires_seconds=config.PASS_TOKEN_EXPIRE_SECONDS)
+                                    expires_seconds=config.PASS_TOKEN_EXPIRE_SECONDS,
+                                    secret=config.PASS_TOKEN_SECRET)
             self._send(200, {"ok": True, "msg": "验证通过", "pass_token": pass_token})
         else:
             record_fail(ip, api_key)
@@ -383,7 +384,8 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         log_attempt(token_id, "text", success, f"input={code}", self._client_ip(), self._ua())
         if success:
             pass_token = create_jwt({"captcha": "passed", "type": "text", "jti": token_id},
-                                    expires_seconds=config.PASS_TOKEN_EXPIRE_SECONDS)
+                                    expires_seconds=config.PASS_TOKEN_EXPIRE_SECONDS,
+                                    secret=config.PASS_TOKEN_SECRET)
             self._send(200, {"ok": True, "msg": "验证通过", "pass_token": pass_token})
         else:
             self._send(200, {"ok": False, "msg": "验证码错误"})
@@ -482,7 +484,8 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         if success:
             record_success(ip, api_key)
             pass_token = create_jwt({"captcha": "passed", "type": "click", "jti": token_id},
-                                    expires_seconds=config.PASS_TOKEN_EXPIRE_SECONDS)
+                                    expires_seconds=config.PASS_TOKEN_EXPIRE_SECONDS,
+                                    secret=config.PASS_TOKEN_SECRET)
             self._send(200, {"ok": True, "msg": "验证通过", "pass_token": pass_token})
         else:
             record_fail(ip, api_key)

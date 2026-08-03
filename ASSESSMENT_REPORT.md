@@ -131,3 +131,19 @@
 | R15 | compose 注明必填凭据；删除 `test.txt`；`.dockerignore`/README 同步 | `docker-compose.yml` 等 |
 
 **验证**：全部 Python 文件 `py_compile` 通过；冒烟测试 16 项全绿（health/安全头/生成/校验/XSS 载荷/登录锁定 429/超限 413/XFF 伪造不可绕过限流/可信代理路径/production fail-fast 退出码 1/强凭据正常启动/10 并发生成全成功）。
+
+---
+
+## 七、整改记录（第二轮加固，2026-08-03）
+
+| 编号 | 改动 | 说明 |
+|------|------|------|
+| R17 | 并发连接上限 `MAX_CONCURRENT`（默认 64） | `app.py` 信号量覆盖连接完整生命周期，超限直接 RST 新连接，防连接洪水耗尽线程/句柄（修复 R1 后"线程无上限"缺口） |
+| R18 | `log_attempt` / `mark_used` 异常兜底 | 日志/标记写入失败只打警告，不阻断验证主流程 |
+| R19 | `requirements.txt` 锁定依赖版本 | Pillow 12.3.0 / PyJWT 2.13.0 / redis 5.2.1，Dockerfile 改用 `-r requirements.txt`，构建可复现 |
+| R20 | pass_token 独立签发密钥 `PASS_TOKEN_SECRET` | 与管理 JWT 密钥分离（未设置时回退 `SECRET_KEY` 保持兼容），减小密钥扩散面 |
+| R21 | 版本号 2.1.1，README 同步新环境变量 | — |
+
+**验证（第二轮）**：`py_compile` 通过；连接上限实测（limit=2 时 5 个挂起连接拒绝 3 个，释放后正常请求恢复）；12 项冒烟回归全绿；渲染完整性 0/54 越界、60 目标坐标偏差 ≤10px。
+
+**当前评级：单实例内网/中低流量可用；公网生产建议再前置 Nginx/Caddy 做 HTTPS、连接级限流与进程级 QPS 控制（CPU 密集型图片生成的多实例水平扩展）。**

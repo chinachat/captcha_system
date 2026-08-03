@@ -81,18 +81,25 @@ def mark_used(token_id):
             pass
 
     conn = get_db()
-    conn.execute("UPDATE captcha_tokens SET used = 1 WHERE id = ?", (token_id,))
-    conn.commit()
+    try:
+        conn.execute("UPDATE captcha_tokens SET used = 1 WHERE id = ?", (token_id,))
+        conn.commit()
+    except Exception as e:
+        print("[WARN] mark_used failed:", e)
 
 
 def log_attempt(token_id, ctype, success, detail, ip="", ua=""):
-    conn = get_db()
-    conn.execute(
-        "INSERT INTO captcha_logs (token_id, type, success, detail, ip, user_agent, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (token_id, ctype, 1 if success else 0, detail, ip, ua, now())
-    )
-    conn.commit()
+    try:
+        conn = get_db()
+        conn.execute(
+            "INSERT INTO captcha_logs (token_id, type, success, detail, ip, user_agent, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (token_id, ctype, 1 if success else 0, detail, ip, ua, now())
+        )
+        conn.commit()
+    except Exception as e:
+        # 日志写入失败不阻断验证主流程
+        print("[WARN] log_attempt failed:", e)
 
 
 def cleanup_expired():
