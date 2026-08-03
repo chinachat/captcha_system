@@ -23,8 +23,9 @@ services:
       - DEFAULT_API_KEY=${DEFAULT_API_KEY}
       - RATE_LIMIT_GENERATE=30
       - CAPTCHA_EXPIRE=120
-      # 可信代理 IP（反向代理场景下填写，仅当请求真实来源 IP 命中时才信任 X-Forwarded-For）
-      # - TRUSTED_PROXIES=127.0.0.1
+      # 可信代理 IP/CIDR（从 .env 读取，如 TRUSTED_PROXIES=127.0.0.1,192.168.1.0/24）。
+      # 仅当请求真实来源 IP 命中时才信任 X-Forwarded-For，防止客户端伪造绕过限流
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}
       # 启用 Redis 时取消下面两行注释，并启用下方 redis 服务
       # - REDIS_URL=redis://redis:6379/0
       - DB_PATH=/data/captcha.db
