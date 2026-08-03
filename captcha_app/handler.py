@@ -35,7 +35,7 @@ from .db import get_db
 from .rate_limit import check_rate_limit
 from .redis_client import get_redis
 from .stats import get_stats
-from .tokens import create_token, get_token, log_attempt, mark_used
+from .tokens import consume_pass_jti, create_token, get_token, log_attempt, mark_used
 from .users import (
     authenticate_user,
     count_keys,
@@ -273,6 +273,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             "/api/v1/captcha/click/generate": self._api_click_generate,
             "/api/v1/captcha/click/verify": self._api_click_verify,
             "/api/v1/captcha/test": self._api_captcha_test,
+            "/api/v1/captcha/validate": self._api_captcha_validate,
             "/api/v1/admin/login": self._api_admin_login,
             "/api/v1/admin/logout": lambda: self._send(200, {"ok": True}),
             "/api/v1/admin/captcha/generate": self._api_login_captcha_generate,
@@ -516,6 +517,31 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             "server_secret_explicit": bool(os.environ.get("PASS_TOKEN_SECRET", "")),
             "ts": now(),
         }})
+
+    def _api_captcha_validate(self):
+        """在线校验 pass_token（服务端验签 + 一次性消费）。
+
+        供未配置 PASS_TOKEN_SECRET 的接入方（如 WordPress 插件普通用户）使用：
+        调用方只需携带自己的 API Key 与 pass_token。
+        """
+        if not self._require_api_key() or not self._check_rl():
+            return
+        body = self._read_json()
+        if body is None:
+            return
+        token = body.get("pass_token") or body.get("token")
+        if not token or not isinstance(token, str):
+            self._json_error("缺少 pass_token")
+            return
+        payload = decode_jwt(token, secret=config.PASS_TOKEN_SECRET)
+        if not payload or payload.get("captcha") != "passed":
+            self._send(200, {"ok": False, "msg": "验证未通过"})
+            return
+        jti = str(payload.get("jti") or "")
+        if not consume_pass_jti(jti):
+            self._send(200, {"ok": False, "msg": "验证码已使用"})
+            return
+        self._send(200, {"ok": True, "msg": "验证通过"})
 
     def _api_text_generate(self):
         if not self._require_api_key() or not self._check_rl():

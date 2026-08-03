@@ -34,8 +34,8 @@ def create_jwt(payload: dict, expires_seconds: int = None, secret: str = None) -
     return jwt.encode(payload, secret or config.SECRET_KEY, algorithm="HS256")
 
 
-def decode_jwt(token: str):
+def decode_jwt(token: str, secret: str = None):
     try:
-        return jwt.decode(token, config.SECRET_KEY, algorithms=["HS256"])
+        return jwt.decode(token, secret or config.SECRET_KEY, algorithms=["HS256"])
     except Exception:
         return None

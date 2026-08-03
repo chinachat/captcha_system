@@ -102,9 +102,40 @@ def log_attempt(token_id, ctype, success, detail, ip="", ua="", api_key=""):
         print("[WARN] log_attempt failed:", e)
 
 
+def consume_pass_jti(jti: str, ttl: int = 120) -> bool:
+    """pass_token 一次性消费（原子）：返回 True 表示首次消费成功。
+
+    Redis 模式用 SET NX EX；SQLite 用 INSERT OR IGNORE。
+    """
+    if not jti:
+        return True
+    r = get_redis()
+    if r:
+        try:
+            key = f"pass:{jti}"
+            if r.set(key, "1", nx=True, ex=ttl):
+                return True
+            return False
+        except Exception:
+            pass
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO captcha_passes (jti, created_at) VALUES (?, ?)",
+            (jti, now()),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        print("[WARN] consume_pass_jti failed:", e)
+        # 数据库异常时保守放行（不阻断业务），由签名与过期兜底
+        return True
+
+
 def cleanup_expired():
     t = now()
     conn = get_db()
     conn.execute("DELETE FROM captcha_tokens WHERE expires_at < ? OR used = 1", (t - 3600,))
     conn.execute("DELETE FROM captcha_logs WHERE created_at < ?", (t - 7 * 86400,))
+    conn.execute("DELETE FROM captcha_passes WHERE created_at < ?", (t - 7 * 86400,))
     conn.commit()

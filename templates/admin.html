@@ -512,7 +512,7 @@ async function loadStats() {
           return `
           <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
             <span style="width:130px;font-size:12px;color:#64748b">PASS_TOKEN_SECRET</span>
-            <code class="cg-cfg">联系管理员获取</code>
+            <code class="cg-cfg">可留空（插件使用在线校验）</code>
           </div>`;
         }
         const short = v.slice(0, 8);
@@ -805,7 +805,7 @@ function copyConnect(key) {
   const c = k.connect;
   const secret = c.pass_token_secret
     ? "PASS_TOKEN_SECRET: " + c.pass_token_secret
-    : "PASS_TOKEN_SECRET: （请联系管理员获取）";
+    : "PASS_TOKEN_SECRET: （可留空，插件使用在线校验）";
   const text = [
     "API 服务地址: " + c.base_url,
     "API Key: " + c.api_key,

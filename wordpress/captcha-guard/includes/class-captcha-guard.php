@@ -60,12 +60,31 @@ class Captcha_Guard {
 		// 设置页"测试连接"（admin-ajax，仅管理员可触发）。
 		add_action( 'wp_ajax_captcha_guard_test', array( $this, 'ajax_test_connection' ) );
 
+		// 在线校验模式可能请求同机部署的验证码服务，放行配置的主机（WP 默认阻止 localhost 出站）。
+		add_filter( 'http_request_host_is_external', array( $this, 'allow_configured_host' ), 10, 2 );
+
 		if ( $this->is_enabled() ) {
 			$this->frontend->init();
 			$this->register_hooks();
 		}
 
 		add_action( 'init', array( $this, 'load_textdomain' ) );
+	}
+
+	/**
+	 * 放行插件配置的验证码服务主机（其余主机保持 WP 默认策略）。
+	 *
+	 * @param bool   $allow 是否允许。
+	 * @param string $host  目标主机。
+	 * @return bool
+	 */
+	public function allow_configured_host( $allow, $host ) {
+		if ( $allow ) {
+			return $allow;
+		}
+		$base   = rtrim( (string) $this->option( 'api_base_url' ), '/' );
+		$target = wp_parse_url( $base, PHP_URL_HOST );
+		return $target && $host === $target;
 	}
 
 	/**
@@ -262,9 +281,11 @@ class Captcha_Guard {
 			'detail' => '' !== $key ? __( '已填写', 'captcha-guard' ) : __( '未填写', 'captcha-guard' ),
 		);
 		$checks[] = array(
-			'ok'     => '' !== $secret,
+			'ok'     => true,
 			'label'  => __( 'PASS_TOKEN_SECRET', 'captcha-guard' ),
-			'detail' => '' !== $secret ? __( '已填写', 'captcha-guard' ) : __( '未填写（需填写验证码服务端 SECRET_KEY 或 PASS_TOKEN_SECRET）', 'captcha-guard' ),
+			'detail' => '' !== $secret
+				? __( '已填写（本地验签模式）', 'captcha-guard' )
+				: __( '未填写（使用服务端在线校验模式）', 'captcha-guard' ),
 		);
 
 		if ( '' !== $base && '' !== $key ) {
@@ -302,7 +323,12 @@ class Captcha_Guard {
 
 					$payload = Captcha_Guard_Verify::verify_jwt( $body['data']['pass_token'], $secret );
 					if ( '' === $secret ) {
-						// 未填写密钥已在前面报告。
+						// 在线校验模式：无需密钥一致性检查
+						$checks[] = array(
+							'ok'     => true,
+							'label'  => __( '校验模式', 'captcha-guard' ),
+							'detail' => __( '在线校验模式（服务端验签，需服务端 v2.4.1+）', 'captcha-guard' ),
+						);
 					} elseif ( is_array( $payload ) && 'passed' === $payload['captcha'] ) {
 						$checks[] = array(
 							'ok'     => true,
@@ -324,7 +350,7 @@ class Captcha_Guard {
 					$checks[] = array(
 						'ok'     => false,
 						'label'  => __( '验证码服务连通性', 'captcha-guard' ),
-						'detail' => __( '接口不存在：验证码服务版本过低，请升级到 v2.2.0+', 'captcha-guard' ),
+						'detail' => __( '接口不存在：验证码服务版本过低，请升级到 v2.2.0+（在线校验需 v2.4.1+）', 'captcha-guard' ),
 					);
 				} elseif ( 401 === $code ) {
 					$checks[] = array(

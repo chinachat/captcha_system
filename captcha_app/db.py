@@ -77,6 +77,10 @@ def init_db():
         created_at    REAL NOT NULL,
         FOREIGN KEY (group_id) REFERENCES user_groups(id)
     );
+    CREATE TABLE IF NOT EXISTS captcha_passes (
+        jti         TEXT PRIMARY KEY,
+        created_at  REAL NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS idx_tokens_expires ON captcha_tokens(expires_at);
     CREATE INDEX IF NOT EXISTS idx_logs_created ON captcha_logs(created_at);
     CREATE INDEX IF NOT EXISTS idx_logs_type ON captcha_logs(type);

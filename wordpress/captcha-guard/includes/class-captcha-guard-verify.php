@@ -23,6 +23,10 @@ class Captcha_Guard_Verify {
 	/**
 	 * 校验请求携带的 pass_token。
 	 *
+	 * 两种模式：
+	 * 1. 已配置 PASS_TOKEN_SECRET → 本地验签（离线、快速）；
+	 * 2. 未配置（普通用户场景）→ 调用服务端 /api/v1/captcha/validate 在线校验。
+	 *
 	 * @param string $token pass_token（JWT）。
 	 * @return true|WP_Error
 	 */
@@ -34,27 +38,52 @@ class Captcha_Guard_Verify {
 		}
 
 		$secret = (string) $this->guard->option( 'pass_token_secret' );
-		if ( '' === $secret ) {
-			// 不泄露配置状态，统一返回通用提示；后台"设置 → Captcha Guard"可排查。
-			return new WP_Error( 'cg_captcha', $message );
-		}
-
-		$payload = self::verify_jwt( $token, $secret );
-		if ( ! is_array( $payload ) || empty( $payload['captcha'] ) || 'passed' !== $payload['captcha'] ) {
-			return new WP_Error( 'cg_captcha', $message );
-		}
-
-		// 一次性使用：同一 jti 在有效期内只能通过一次。
-		$jti = isset( $payload['jti'] ) ? (string) $payload['jti'] : '';
-		if ( '' !== $jti ) {
-			$transient = 'cg_jti_' . md5( $jti );
-			if ( get_transient( $transient ) ) {
-				return new WP_Error( 'cg_captcha', __( '验证码已使用，请重新验证。', 'captcha-guard' ) );
+		if ( '' !== $secret ) {
+			$payload = self::verify_jwt( $token, $secret );
+			if ( ! is_array( $payload ) || empty( $payload['captcha'] ) || 'passed' !== $payload['captcha'] ) {
+				return new WP_Error( 'cg_captcha', $message );
 			}
-			set_transient( $transient, 1, 120 );
+			// 一次性使用：同一 jti 在有效期内只能通过一次。
+			$jti = isset( $payload['jti'] ) ? (string) $payload['jti'] : '';
+			if ( '' !== $jti ) {
+				$transient = 'cg_jti_' . md5( $jti );
+				if ( get_transient( $transient ) ) {
+					return new WP_Error( 'cg_captcha', __( '验证码已使用，请重新验证。', 'captcha-guard' ) );
+				}
+				set_transient( $transient, 1, 120 );
+			}
+			return true;
 		}
 
-		return true;
+		// 在线校验模式：服务端验签 + 一次性消费（普通用户无需密钥）。
+		$base = rtrim( (string) $this->guard->option( 'api_base_url' ), '/' );
+		$key  = (string) $this->guard->option( 'api_key' );
+		if ( '' === $base || '' === $key ) {
+			return new WP_Error( 'cg_captcha', __( '请填写 API 服务地址与 API Key（PASS_TOKEN_SECRET 可留空使用在线校验）', 'captcha-guard' ) );
+		}
+		$resp = wp_remote_post(
+			$base . '/api/v1/captcha/validate',
+			array(
+				'timeout' => 10,
+				'headers' => array(
+					'X-API-Key'    => $key,
+					'Content-Type' => 'application/json',
+				),
+				'body'    => wp_json_encode( array( 'pass_token' => $token ) ),
+			)
+		);
+		if ( is_wp_error( $resp ) ) {
+			return new WP_Error( 'cg_captcha', __( '验证码服务校验失败：', 'captcha-guard' ) . $resp->get_error_message() );
+		}
+		$code = (int) wp_remote_retrieve_response_code( $resp );
+		$body = json_decode( wp_remote_retrieve_body( $resp ), true );
+		if ( 200 === $code && is_array( $body ) && ! empty( $body['ok'] ) ) {
+			return true;
+		}
+		if ( 404 === $code ) {
+			return new WP_Error( 'cg_captcha', __( '验证码服务版本过低，请升级到 v2.4.1+ 以使用在线校验', 'captcha-guard' ) );
+		}
+		return new WP_Error( 'cg_captcha', $message );
 	}
 
 	/**

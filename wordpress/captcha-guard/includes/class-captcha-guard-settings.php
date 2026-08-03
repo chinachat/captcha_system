@@ -293,7 +293,7 @@ class Captcha_Guard_Settings {
 			esc_attr( CG_OPTION ),
 			esc_attr( $this->value( 'pass_token_secret' ) )
 		);
-		echo '<p class="description">' . esc_html__( '验证码服务端 PASS_TOKEN_SECRET（未单独设置时即其 SECRET_KEY），用于服务端校验 pass_token 签名。', 'captcha-guard' ) . '</p>';
+		echo '<p class="description">' . esc_html__( '可留空：留空时插件调用验证码服务在线校验接口（需 API Key，普通用户推荐）；填写则本地验签（离线、更快）。', 'captcha-guard' ) . '</p>';
 	}
 
 	public function field_sdk_url() {
