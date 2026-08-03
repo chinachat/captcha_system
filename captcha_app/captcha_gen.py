@@ -102,6 +102,29 @@ def generate_slider_captcha(width=320, height=160, puzzle_size=42):
     return bg, piece, puzzle_x, puzzle_y
 
 
+def _text_bbox(draw, ch, font):
+    """返回 textbbox，异常时给保守默认值。"""
+    try:
+        return draw.textbbox((0, 0), ch, font=font)
+    except Exception:
+        return (0, 0, 24, 28)
+
+
+def _render_char_glyph(ch, font, draw, fill, pad=8):
+    """按 bbox 偏移精确渲染单个字符。
+
+    以 textbbox 的 left/top 偏移修正锚点，确保任意字体的字形都完整落在
+    画布内（不会被底部/顶部裁剪）；返回 (glyph, ink_cx, ink_cy)，
+    其中 ink 中心用于目标坐标，保证点击判定与视觉一致。
+    """
+    left, top, right, bottom = _text_bbox(draw, ch, font)
+    tw, th = max(1, right - left), max(1, bottom - top)
+    glyph = Image.new("RGBA", (tw + pad * 2, th + pad * 2), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glyph)
+    gd.text((pad - left, pad - top), ch, font=font, fill=fill)
+    return glyph, left + tw / 2, top + th / 2
+
+
 def generate_click_captcha(width=320, height=180, total_chars=5, click_count=3):
     pool = list("天地上中水火土金风雷龙云山海花草春秋日月星光")
     pool += list("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
@@ -135,14 +158,11 @@ def generate_click_captcha(width=320, height=180, total_chars=5, click_count=3):
     while idx < total_chars and attempts < 200:
         attempts += 1
         ch = chars[idx]
-        try:
-            bbox = draw.textbbox((0, 0), ch, font=font)
-            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        except Exception:
-            tw, th = 24, 28
+        left, top, right, bottom = _text_bbox(draw, ch, font)
+        tw, th = max(1, right - left), max(1, bottom - top)
         x = margin + secrets.randbelow(max(1, width - margin * 2 - tw))
         y = margin + secrets.randbelow(max(1, height - margin * 2 - th))
-        cx, cy = x + tw / 2, y + th / 2
+        cx, cy = x + left + tw / 2, y + top + th / 2
         ok = True
         for p in placed:
             if abs(cx - p["x"]) < 42 and abs(cy - p["y"]) < 42:
@@ -152,24 +172,25 @@ def generate_click_captcha(width=320, height=180, total_chars=5, click_count=3):
             continue
         color = utils.random_color(10, 90)
         angle = secrets.randbelow(41) - 20
-        pad = 8
-        glyph = Image.new("RGBA", (tw + pad * 2, th + pad * 2), (0, 0, 0, 0))
-        gd = ImageDraw.Draw(glyph)
-        gd.text((pad, pad), ch, font=font, fill=color + (255,))
+        glyph, ink_cx, ink_cy = _render_char_glyph(ch, font, draw, color + (255,))
         glyph = glyph.rotate(angle, expand=True, resample=Image.BICUBIC)
         px = int(cx - glyph.width / 2)
         py = int(cy - glyph.height / 2)
         img.paste(glyph, (px, py), glyph)
         draw = ImageDraw.Draw(img)
-        placed.append({"char": ch, "x": cx, "y": cy, "w": tw, "h": th})
+        placed.append({"char": ch, "x": cx, "y": cy, "w": tw, "h": th,
+                       "ink_x": ink_cx, "ink_y": ink_cy})
         idx += 1
 
     while len(placed) < click_count:
         ch = secrets.choice(pool)
-        x = margin + secrets.randbelow(width - margin * 2)
-        y = margin + secrets.randbelow(height - margin * 2)
-        draw.text((x, y), ch, font=font, fill=utils.random_color(10, 90))
-        placed.append({"char": ch, "x": x + 12, "y": y + 12, "w": 24, "h": 28})
+        left, top, right, bottom = _text_bbox(draw, ch, font)
+        tw, th = max(1, right - left), max(1, bottom - top)
+        x = margin + secrets.randbelow(max(1, width - margin * 2 - tw))
+        y = margin + secrets.randbelow(max(1, height - margin * 2 - th))
+        draw.text((x - left, y - top), ch, font=font, fill=utils.random_color(10, 90))
+        placed.append({"char": ch, "x": x + left + tw / 2, "y": y + top + th / 2,
+                       "w": tw, "h": th, "ink_x": left + tw / 2, "ink_y": top + th / 2})
 
     targets = []
     used = set()
@@ -211,8 +232,10 @@ def generate_text_captcha(length=4, width=160, height=56):
     font = fonts.load_cjk_font(32)
     char_w = width // (length + 1)
     for i, ch in enumerate(code):
+        left, top, right, bottom = _text_bbox(draw, ch, font)
+        tw, th = max(1, right - left), max(1, bottom - top)
         x = 12 + i * char_w + secrets.randbelow(6) - 3
-        y = 8 + secrets.randbelow(10) - 4
-        draw.text((x, y), ch, font=font, fill=utils.random_color(20, 100))
+        y = max(0, (height - th) // 2) + secrets.randbelow(10) - 4
+        draw.text((x - left, y - top), ch, font=font, fill=utils.random_color(20, 100))
     img = img.filter(ImageFilter.SMOOTH)
     return img, code

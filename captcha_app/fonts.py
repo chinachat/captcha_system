@@ -27,16 +27,26 @@ def _scan_font_candidates():
         (os.path.join(fonts_dir, "NotoSansSC-Regular.otf"), [None]),
         (os.path.join(fonts_dir, "SourceHanSansSC-Regular.otf"), [None]),
         (os.path.join(fonts_dir, "wqy-microhei.ttc"), [0]),
+        # Windows 常见中文字体
+        ("C:/Windows/Fonts/msyh.ttc", [0, 1, 2]),
+        ("C:/Windows/Fonts/msyhbd.ttc", [0, 1, 2]),
+        ("C:/Windows/Fonts/simhei.ttf", [None]),
+        ("C:/Windows/Fonts/simsun.ttc", [0, 1, 2]),
+        ("C:/Windows/Fonts/simkai.ttf", [None]),
+        ("C:/Windows/Fonts/Deng.ttf", [None]),
+        ("C:/Windows/Fonts/Dengb.ttf", [None]),
     ]
 
     scan_dirs = [
         "/usr/share/fonts",
         "/usr/local/share/fonts",
         os.path.expanduser("~/.fonts"),
+        r"C:\Windows\Fonts",
         fonts_dir,
     ]
     keywords = ("cjk", "noto sans sc", "notosanssc", "wqy", "wenquan", "droid sans fallback",
-                "source han", "sourcehan", "simhei", "simsun", "microsoft yahei", "pingfang")
+                "source han", "sourcehan", "simhei", "simsun", "simkai", "msyh", "yahei",
+                "deng", "microsoft yahei", "pingfang")
     for root in scan_dirs:
         if not os.path.isdir(root):
             continue
@@ -75,7 +85,11 @@ def load_cjk_font(size=26):
                 continue
 
     print("[font] 警告: 未找到中文字体，汉字可能显示为方框。请安装 fonts-noto-cjk 或将字体放入 fonts/ 目录")
-    font = ImageFont.load_default()
+    try:
+        # Pillow >= 10.1 支持指定大小，避免回退到 11px 小字
+        font = ImageFont.load_default(size)
+    except Exception:
+        font = ImageFont.load_default()
     _CJK_FONT_CACHE[size] = font
     return font
 
