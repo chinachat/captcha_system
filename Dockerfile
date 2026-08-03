@@ -1,15 +1,34 @@
-FROM docker.m.daocloud.io/library/python:3.12-slim
+# 基础镜像可通过 --build-arg BASE_IMAGE=... 或 build.sh 自动选择（国内/国际）
+ARG BASE_IMAGE=docker.m.daocloud.io/library/python:3.12-slim
+FROM ${BASE_IMAGE}
 
 WORKDIR /app
 
-# 国内云服务器：将 Debian 软件源切换为阿里云镜像（Debian 12 为 deb822 格式，
-# 兼容旧版 sources.list），避免 apt-get update / fonts-noto-cjk 下载卡死
-RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' \
-      /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
-    sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' \
-      /etc/apt/sources.list
+# 自动探测网络环境：国内镜像源可达则 apt/pip 使用国内源，否则使用官方源
+RUN python - <<'PY'
+import urllib.request, socket
+socket.setdefaulttimeout(3)
+def reachable(url):
+    try:
+        urllib.request.urlopen(url, timeout=3)
+        return True
+    except Exception:
+        return False
+if reachable("http://mirrors.aliyun.com/debian/"):
+    open("/tmp/use_cn_mirror", "w").write("1")
+    print("[mirror] 国内网络环境：apt/pip 使用国内镜像源")
+else:
+    print("[mirror] 国际网络环境：使用官方软件源")
+PY
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# apt：国内源可用时切换阿里云（兼容 Debian 12/13 的 deb822 格式与旧版 sources.list）
+RUN if [ -f /tmp/use_cn_mirror ]; then \
+      sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' \
+        /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+      sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' \
+        /etc/apt/sources.list; \
+    fi && \
+    apt-get update && apt-get install -y --no-install-recommends \
     libjpeg62-turbo zlib1g \
     fonts-dejavu-core \
     fonts-noto-cjk \
@@ -24,9 +43,12 @@ COPY templates/ templates/
 COPY static/ static/
 COPY fonts/ fonts/
 
-RUN pip install --no-cache-dir \
-    -i https://pypi.tuna.tsinghua.edu.cn/simple \
-    -r requirements.txt
+# pip：国内源可用时使用清华源
+RUN if [ -f /tmp/use_cn_mirror ]; then \
+      pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt; \
+    else \
+      pip install --no-cache-dir -r requirements.txt; \
+    fi
 
 ENV HOST=0.0.0.0
 ENV PORT=8080

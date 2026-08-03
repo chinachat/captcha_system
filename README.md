@@ -202,19 +202,7 @@ JSON
 sudo systemctl daemon-reload
 sudo systemctl restart docker
 ```
-
-本仓库 `Dockerfile` 默认使用：
-
-```dockerfile
-FROM docker.m.daocloud.io/library/python:3.12-slim
-```
-
-pip 使用清华源；若仍失败，可将第一行改为：
-
-```dockerfile
-FROM registry.cn-hangzhou.aliyuncs.com/library/python:3.12-slim
-```
-
+ 
 ---
 
 ### 2.5 构建并启动（基础版，仅 SQLite）
@@ -222,8 +210,19 @@ FROM registry.cn-hangzhou.aliyuncs.com/library/python:3.12-slim
 ```bash
 cd captcha_system
 
-# 构建镜像并后台启动
+# 方式一（推荐）：自动选择国内/国际镜像源后构建
+./build.sh
+
+# 方式二：docker compose 直接构建（默认国内 daocloud 源；apt/pip 源会在镜像内自动探测切换）
 docker compose up -d --build
+
+# 手动指定基础镜像源（例如使用官方 Docker Hub）
+# BASE_IMAGE=python:3.12-slim docker compose up -d --build
+```
+
+> **镜像源自动选择说明**：
+> - **基础镜像**：`build.sh` 探测 daocloud → 阿里云 → Docker Hub 的可达性，自动选择最快的（也可用 `BASE_IMAGE` 环境变量手动指定）
+> - **apt / pip 源**：镜像内自动探测网络环境——国内网络用阿里云 apt 源 + 清华 pip 源，国际网络用官方源，无需手动配置
 
 # 查看状态
 docker compose ps
