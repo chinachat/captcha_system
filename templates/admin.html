@@ -230,6 +230,17 @@
   </footer>
 
 <script>
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+function escAttr(s) {
+  return String(s == null ? "" : s).replace(/[&<>"'\n\r\\]/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "\n": "&#10;", "\r": "&#13;", "\\": "&#92;" }[c];
+  });
+}
+
 let adminToken = localStorage.getItem("admin_token") || "";
 let timer = null;
 
@@ -312,7 +323,7 @@ function renderBars(el, data, maxH) {
         <div class="bar-ok" style="height:${okH}px"></div>
         <div class="bar-fail" style="height:${failH}px"></div>
       </div>
-      <div class="bar-label">${d.label}</div>
+      <div class="bar-label">${esc(d.label)}</div>
     </div>`;
   }).join("");
 }
@@ -355,22 +366,22 @@ async function loadStats() {
       return `<tr>
         <td>${t}</td><td>${type}</td>
         <td class="${r.success ? "ok" : "fail"}">${r.success ? "成功" : "失败"}</td>
-        <td title="${r.detail || ""}">${(r.detail || "-").slice(0, 40)}</td>
-        <td>${r.ip || "-"}</td>
+        <td title="${escAttr(r.detail || "")}">${esc((r.detail || "-").slice(0, 40))}</td>
+        <td>${esc(r.ip || "-")}</td>
       </tr>`;
     }).join("") || "<tr><td colspan='5' style='text-align:center;color:#8b9bb8'>暂无记录</td></tr>";
 
     document.getElementById("apiKeys").innerHTML = (d.api_keys || []).map(k => `
       <div class="key-row">
         <span class="pill ${k.enabled ? "pill-on" : "pill-off"}">${k.enabled ? "启用" : "禁用"}</span>
-        <strong>${k.name || "-"}</strong>
-        <code>${k.key}</code>
-        <span style="color:#8b9bb8;font-size:12px">${k.note || ""}</span>
+        <strong>${esc(k.name || "-")}</strong>
+        <code>${esc(k.key || "")}</code>
+        <span style="color:#8b9bb8;font-size:12px">${esc(k.note || "")}</span>
         <span style="margin-left:auto">
           ${k.enabled
-            ? `<button class="btn btn-sm btn-gray" onclick="toggleKey('${k.key}', false)">禁用</button>`
-            : `<button class="btn btn-sm" onclick="toggleKey('${k.key}', true)">启用</button>`}
-          <button class="btn btn-sm btn-danger" onclick="deleteKey('${k.key}')">删除</button>
+            ? `<button class="btn btn-sm btn-gray" onclick="toggleKey('${escAttr(k.key)}', false)">禁用</button>`
+            : `<button class="btn btn-sm" onclick="toggleKey('${escAttr(k.key)}', true)">启用</button>`}
+          <button class="btn btn-sm btn-danger" onclick="deleteKey('${escAttr(k.key)}')">删除</button>
         </span>
       </div>
     `).join("") || "<p style='color:#8b9bb8'>暂无 Key</p>";

@@ -1,5 +1,6 @@
 """HTTP 请求处理"""
 import hmac
+import ipaddress
 import json
 import mimetypes
 import os
@@ -13,7 +14,10 @@ from .anti_bot import (
     analyze_click_timing,
     analyze_slider_track,
     is_locked,
+    login_locked,
     record_fail,
+    record_login_fail,
+    record_login_success,
     record_success,
 )
 from .api_keys import (
@@ -32,7 +36,8 @@ from .utils import b64_image, create_jwt, decode_jwt, now
 
 
 class CaptchaHandler(BaseHTTPRequestHandler):
-    server_version = "CaptchaServer/2.0"
+    server_version = "CaptchaServer/2.1"
+    timeout = config.REQUEST_TIMEOUT
 
     def log_message(self, fmt, *args):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {self.address_string()} {fmt % args}")
@@ -53,6 +58,9 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Referrer-Policy", "no-referrer")
         if headers:
             for k, v in headers.items():
                 self.send_header(k, v)
@@ -63,20 +71,47 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         self._send(code, {"ok": False, "msg": msg})
 
     def _read_json(self):
-        length = int(self.headers.get("Content-Length", 0))
-        if length == 0:
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except (TypeError, ValueError):
+            length = 0
+        if length <= 0:
             return {}
+        if length > config.MAX_BODY_BYTES:
+            self._json_error("请求体过大", 413)
+            return None
         try:
             return json.loads(self.rfile.read(length).decode("utf-8"))
         except Exception:
             return {}
 
     def _client_ip(self):
+        """客户端真实 IP：仅当请求来自配置的可信代理时才信任 X-Forwarded-For，防止伪造绕过限流。"""
+        peer = self.client_address[0]
         if config.TRUSTED_PROXIES:
             forwarded = self.headers.get("X-Forwarded-For", "")
-            if forwarded:
+            if forwarded and self._peer_is_trusted(peer):
                 return forwarded.split(",")[0].strip()
-        return self.client_address[0]
+        return peer
+
+    def _peer_is_trusted(self, peer):
+        try:
+            src = ipaddress.ip_address(peer)
+        except ValueError:
+            return False
+        for item in config.TRUSTED_PROXIES.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            try:
+                if "/" in item:
+                    if src in ipaddress.ip_network(item, strict=False):
+                        return True
+                elif src == ipaddress.ip_address(item):
+                    return True
+            except ValueError:
+                continue
+        return False
 
     def _ua(self):
         return self.headers.get("User-Agent", "")[:200]
@@ -235,29 +270,31 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             return
         try:
             bg, piece, puzzle_x, puzzle_y = generate_slider_captcha()
-            pad = 8
-            target_left = puzzle_x - pad
-            target_top = puzzle_y - pad
-            token = create_token(
-                "slider", str(target_left),
-                extra={"y": target_top, "pad": pad, "width": bg.width, "height": bg.height},
-                ip=self._client_ip(), ua=self._ua()
-            )
-            self._send(200, {
-                "ok": True,
-                "data": {
-                    "token": token,
-                    "background": b64_image(bg),
-                    "puzzle": b64_image(piece),
-                    "puzzle_y": target_top,
-                    "pad": pad,
-                    "width": bg.width,
-                    "height": bg.height,
-                    "expires_in": config.CAPTCHA_EXPIRE_SECONDS,
-                }
-            })
         except Exception as e:
-            self._json_error(f"生成失败: {e}", 500)
+            print("[ERROR] slider generate:", e)
+            self._json_error("生成失败，请稍后重试", 500)
+            return
+        pad = 8
+        target_left = puzzle_x - pad
+        target_top = puzzle_y - pad
+        token = create_token(
+            "slider", str(target_left),
+            extra={"y": target_top, "pad": pad, "width": bg.width, "height": bg.height},
+            ip=self._client_ip(), ua=self._ua()
+        )
+        self._send(200, {
+            "ok": True,
+            "data": {
+                "token": token,
+                "background": b64_image(bg),
+                "puzzle": b64_image(piece),
+                "puzzle_y": target_top,
+                "pad": pad,
+                "width": bg.width,
+                "height": bg.height,
+                "expires_in": config.CAPTCHA_EXPIRE_SECONDS,
+            }
+        })
 
     def _api_slider_verify(self):
         if not self._require_api_key():
@@ -268,6 +305,8 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             return
 
         body = self._read_json()
+        if body is None:
+            return
         token_id = body.get("token")
         offset_x = body.get("offset_x")
         track = body.get("track")
@@ -296,7 +335,8 @@ class CaptchaHandler(BaseHTTPRequestHandler):
 
         if success:
             record_success(ip, api_key)
-            pass_token = create_jwt({"captcha": "passed", "type": "slider", "jti": token_id})
+            pass_token = create_jwt({"captcha": "passed", "type": "slider", "jti": token_id},
+                                    expires_seconds=config.PASS_TOKEN_EXPIRE_SECONDS)
             self._send(200, {"ok": True, "msg": "验证通过", "pass_token": pass_token})
         else:
             record_fail(ip, api_key)
@@ -310,22 +350,26 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             return
         try:
             img, code = generate_text_captcha()
-            token = create_token("text", code.upper(), ip=self._client_ip(), ua=self._ua())
-            self._send(200, {
-                "ok": True,
-                "data": {
-                    "token": token,
-                    "image": b64_image(img),
-                    "expires_in": config.CAPTCHA_EXPIRE_SECONDS,
-                }
-            })
         except Exception as e:
-            self._json_error(f"生成失败: {e}", 500)
+            print("[ERROR] text generate:", e)
+            self._json_error("生成失败，请稍后重试", 500)
+            return
+        token = create_token("text", code.upper(), ip=self._client_ip(), ua=self._ua())
+        self._send(200, {
+            "ok": True,
+            "data": {
+                "token": token,
+                "image": b64_image(img),
+                "expires_in": config.CAPTCHA_EXPIRE_SECONDS,
+            }
+        })
 
     def _api_text_verify(self):
         if not self._require_api_key():
             return
         body = self._read_json()
+        if body is None:
+            return
         token_id = body.get("token")
         code = (body.get("code") or "").strip().upper()
         if not token_id or not code:
@@ -338,7 +382,8 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         mark_used(token_id)
         log_attempt(token_id, "text", success, f"input={code}", self._client_ip(), self._ua())
         if success:
-            pass_token = create_jwt({"captcha": "passed", "type": "text", "jti": token_id})
+            pass_token = create_jwt({"captcha": "passed", "type": "text", "jti": token_id},
+                                    expires_seconds=config.PASS_TOKEN_EXPIRE_SECONDS)
             self._send(200, {"ok": True, "msg": "验证通过", "pass_token": pass_token})
         else:
             self._send(200, {"ok": False, "msg": "验证码错误"})
@@ -348,28 +393,30 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             return
         try:
             img, targets = generate_click_captcha()
-            secret = json.dumps(targets, ensure_ascii=False)
-            token = create_token(
-                "click", secret,
-                extra={"width": img.width, "height": img.height},
-                ip=self._client_ip(), ua=self._ua()
-            )
-            prompt = "请依次点击：" + " → ".join(t["char"] for t in targets)
-            self._send(200, {
-                "ok": True,
-                "data": {
-                    "token": token,
-                    "image": b64_image(img),
-                    "prompt": prompt,
-                    "chars": [t["char"] for t in targets],
-                    "count": len(targets),
-                    "width": img.width,
-                    "height": img.height,
-                    "expires_in": config.CAPTCHA_EXPIRE_SECONDS,
-                }
-            })
         except Exception as e:
-            self._json_error(f"生成失败: {e}", 500)
+            print("[ERROR] click generate:", e)
+            self._json_error("生成失败，请稍后重试", 500)
+            return
+        secret = json.dumps(targets, ensure_ascii=False)
+        token = create_token(
+            "click", secret,
+            extra={"width": img.width, "height": img.height},
+            ip=self._client_ip(), ua=self._ua()
+        )
+        prompt = "请依次点击：" + " → ".join(t["char"] for t in targets)
+        self._send(200, {
+            "ok": True,
+            "data": {
+                "token": token,
+                "image": b64_image(img),
+                "prompt": prompt,
+                "chars": [t["char"] for t in targets],
+                "count": len(targets),
+                "width": img.width,
+                "height": img.height,
+                "expires_in": config.CAPTCHA_EXPIRE_SECONDS,
+            }
+        })
 
     def _api_click_verify(self):
         if not self._require_api_key():
@@ -380,6 +427,8 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             return
 
         body = self._read_json()
+        if body is None:
+            return
         token_id = body.get("token")
         points = body.get("points")
         timings = body.get("timings")
@@ -432,7 +481,8 @@ class CaptchaHandler(BaseHTTPRequestHandler):
 
         if success:
             record_success(ip, api_key)
-            pass_token = create_jwt({"captcha": "passed", "type": "click", "jti": token_id})
+            pass_token = create_jwt({"captcha": "passed", "type": "click", "jti": token_id},
+                                    expires_seconds=config.PASS_TOKEN_EXPIRE_SECONDS)
             self._send(200, {"ok": True, "msg": "验证通过", "pass_token": pass_token})
         else:
             record_fail(ip, api_key)
@@ -443,17 +493,41 @@ class CaptchaHandler(BaseHTTPRequestHandler):
 
     def _api_admin_login(self):
         body = self._read_json()
-        if body.get("username") == config.ADMIN_USER and body.get("password") == config.ADMIN_PASS:
+        if body is None:
+            return
+        ip = self._client_ip()
+        locked, remain = login_locked(ip)
+        if locked:
+            self._send(429, {
+                "ok": False,
+                "msg": f"失败次数过多，请 {remain} 秒后再试",
+                "retry_after": remain,
+            }, headers={"Retry-After": str(remain)})
+            return
+        user_ok = hmac.compare_digest(
+            str(body.get("username") or "").encode("utf-8"),
+            config.ADMIN_USER.encode("utf-8"))
+        pass_ok = hmac.compare_digest(
+            str(body.get("password") or "").encode("utf-8"),
+            config.ADMIN_PASS.encode("utf-8"))
+        if user_ok and pass_ok:
+            record_login_success(ip)
             token = create_jwt({"role": "admin", "user": config.ADMIN_USER})
+            cookie = f"admin_token={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={config.JWT_EXPIRE_HOURS*3600}"
+            if self.headers.get("X-Forwarded-Proto", "").lower() == "https":
+                cookie += "; Secure"
             self._send(200, {"ok": True, "token": token, "msg": "登录成功"},
-                       headers={"Set-Cookie": f"admin_token={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={config.JWT_EXPIRE_HOURS*3600}"})
+                       headers={"Set-Cookie": cookie})
         else:
+            record_login_fail(ip)
             self._json_error("用户名或密码错误", 401)
 
     def _api_create_key(self):
         if not self._require_admin():
             return
         body = self._read_json()
+        if body is None:
+            return
         name = (body.get("name") or "新 Key").strip()[:64]
         note = (body.get("note") or "").strip()[:200]
         key = create_api_key(name, note)
@@ -521,13 +595,11 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                 {"method": "POST", "path": "/api/v1/captcha/slider/verify", "body": {"token": "", "offset_x": 0}},
                 {"method": "POST", "path": "/api/v1/captcha/click/generate", "desc": "生成点选验证码"},
                 {"method": "POST", "path": "/api/v1/captcha/click/verify", "body": {"token": "", "points": [{"x":0,"y":0}]}},
-                {"method": "POST", "path": "/api/v1/admin/login", "body": {"username": "admin", "password": "<your-password>"}},
+                {"method": "POST", "path": "/api/v1/admin/login", "body": {"username": "<admin>", "password": "<your-password>"}},
                 {"method": "GET", "path": "/api/v1/stats", "desc": "统计（需管理员）"},
                 {"method": "GET", "path": "/api/v1/admin/keys", "desc": "列出 API Key"},
                 {"method": "POST", "path": "/api/v1/admin/keys", "body": {"name": "业务名", "note": "备注"}},
                 {"method": "PUT", "path": "/api/v1/admin/keys/{key}/enable|disable"},
                 {"method": "DELETE", "path": "/api/v1/admin/keys/{key}"},
             ],
-            "default_api_key": config.DEFAULT_API_KEY,
-            "admin": {"username": config.ADMIN_USER, "note": "生产环境请务必修改默认密码"},
         })

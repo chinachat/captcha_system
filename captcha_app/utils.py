@@ -25,11 +25,12 @@ def random_color(low=40, high=200):
     return tuple(secrets.randbelow(high - low) + low for _ in range(3))
 
 
-def create_jwt(payload: dict) -> str:
+def create_jwt(payload: dict, expires_seconds: int = None) -> str:
     payload = payload.copy()
     now_utc = datetime.now(timezone.utc)
     payload["iat"] = now_utc
-    payload["exp"] = now_utc + timedelta(hours=config.JWT_EXPIRE_HOURS)
+    expire_seconds = expires_seconds if expires_seconds is not None else config.JWT_EXPIRE_HOURS * 3600
+    payload["exp"] = now_utc + timedelta(seconds=expire_seconds)
     return jwt.encode(payload, config.SECRET_KEY, algorithm="HS256")
 
 

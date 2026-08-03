@@ -8,10 +8,26 @@ from .utils import now
 
 _rate_memory = defaultdict(deque)
 _rate_lock = threading.Lock()
+_last_cleanup = [0.0]
+_CLEANUP_INTERVAL = 60.0
+
+
+def _sweep_memory():
+    """定期清理已过期的限流条目，防止攻击者用随机 IP 撑爆内存。"""
+    t = now()
+    if t - _last_cleanup[0] < _CLEANUP_INTERVAL:
+        return
+    _last_cleanup[0] = t
+    with _rate_lock:
+        stale = [k for k, q in _rate_memory.items()
+                 if q and q[0] < t - config.RATE_LIMIT_WINDOW - 10]
+        for k in stale:
+            del _rate_memory[k]
 
 
 def check_rate_limit(ip: str, action: str = "generate") -> tuple:
     """返回 (allowed, remaining, reset_in)"""
+    _sweep_memory()
     r = get_redis()
     key = f"rl:{action}:{ip}"
     limit = config.RATE_LIMIT_GENERATE

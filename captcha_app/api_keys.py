@@ -29,15 +29,21 @@ def create_api_key(name, note=""):
 
 def set_api_key_enabled(key, enabled):
     conn = get_db()
+    exists = conn.execute("SELECT 1 FROM api_keys WHERE key = ?", (key,)).fetchone()
+    if not exists:
+        return False
     conn.execute("UPDATE api_keys SET enabled = ? WHERE key = ?", (1 if enabled else 0, key))
     conn.commit()
-    return conn.total_changes > 0
+    return True
 
 def delete_api_key(key):
     if key == config.DEFAULT_API_KEY:
         return False
     conn = get_db()
+    exists = conn.execute("SELECT 1 FROM api_keys WHERE key = ?", (key,)).fetchone()
+    if not exists:
+        return False
     conn.execute("DELETE FROM api_keys WHERE key = ?", (key,))
     conn.commit()
-    return conn.total_changes > 0
+    return True
 

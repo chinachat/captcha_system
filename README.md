@@ -400,15 +400,22 @@ docker compose build --no-cache --progress=plain 2>&1 | tee build.log
 
 ## 三、环境变量
 
+> **安全提示（v2.1.1+）**：设置 `ENV=production` 后，若 `ADMIN_PASS` / `DEFAULT_API_KEY` / `SECRET_KEY` 仍为默认或占位值，应用将**拒绝启动**（fail-fast），强制你配置强凭据。本地开发保持默认即可（仅告警）。Docker 镜像默认即 `ENV=production`。
+
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `HOST` | `0.0.0.0` | 监听地址 |
 | `PORT` | `8080` | 端口 |
+| `ENV` | `development` | `production` 时启用默认凭据 fail-fast 校验 |
+| `ALLOW_INSECURE_DEFAULTS` | 空 | `1/true` 时即使在 production 也允许默认凭据（仅调试用） |
 | `SECRET_KEY` | 随机 | JWT 签名密钥（生产请固定） |
 | `ADMIN_USER` | `admin` | 后台用户名 |
-| `ADMIN_PASS` | `admin123` | 后台密码 |
-| `DEFAULT_API_KEY` | `demo-api-key-captcha-2026` | 默认 API Key |
+| `ADMIN_PASS` | `admin123` | 后台密码（production 必须修改） |
+| `DEFAULT_API_KEY` | `demo-api-key-captcha-2026` | 默认 API Key（production 必须修改） |
 | `CAPTCHA_EXPIRE` | `120` | 验证码有效秒数 |
+| `PASS_TOKEN_EXPIRE` | `60` | 业务 pass_token（JWT）有效秒数，与验证码时效分离 |
+| `MAX_BODY_BYTES` | `65536` | 请求体大小上限，防内存耗尽 |
+| `REQUEST_TIMEOUT` | `15` | 单连接请求读取超时（秒），防慢速连接攻击 |
 | `DB_PATH` | `/tmp/captcha_system.db` | SQLite 路径 |
 | `REDIS_URL` | 空 | 如 `redis://127.0.0.1:6379/0` |
 | `RATE_LIMIT_GENERATE` | `30` | 每 IP 每分钟生成次数上限 |
@@ -418,6 +425,9 @@ docker compose build --no-cache --progress=plain 2>&1 | tee build.log
 | `CLICK_MIN_GAP_MS` | `120` | 两次点击最小间隔 |
 | `FAIL_LOCK_THRESHOLD` | `8` | 连续失败锁定阈值 |
 | `FAIL_LOCK_SECONDS` | `300` | 锁定时长（秒） |
+| `LOGIN_LOCK_THRESHOLD` | `5` | 管理登录失败锁定阈值（IP 维度） |
+| `LOGIN_LOCK_SECONDS` | `300` | 管理登录锁定时长（秒） |
+| `TRUSTED_PROXIES` | 空 | 可信代理 IP/CIDR（逗号分隔）。仅当请求真实来源 IP 命中该列表时才信任 `X-Forwarded-For`，防止客户端伪造绕过限流。例：`127.0.0.1,192.168.1.0/24` |
 
 ---
 
@@ -783,11 +793,11 @@ Authorization: Bearer <jwt>
 
 ## 八、生产建议
 
-1. 修改 `ADMIN_PASS`、`SECRET_KEY`、`DEFAULT_API_KEY`
+1. 设置 `ENV=production` 并修改 `ADMIN_PASS`、`SECRET_KEY`、`DEFAULT_API_KEY`（不修改将拒绝启动）
 2. 固定 `SECRET_KEY`，避免重启后 JWT 全部失效
 3. 启用 Redis（多实例共享 Token 与限流）
-4. 前置 Nginx / Caddy 做 HTTPS 与额外限流
-5. 业务接口校验 `pass_token` 的 JWT 签名与 `exp`
+4. 前置 Nginx / Caddy 做 HTTPS 与额外限流；若使用反向代理，配置 `TRUSTED_PROXIES` 后应用才会信任 `X-Forwarded-For`（否则按真实来源 IP 限流，防伪造）
+5. 业务接口校验 `pass_token` 的 JWT 签名与 `exp`（默认 60 秒有效，见 `PASS_TOKEN_EXPIRE`）
 6. 安装中文字体，避免点选汉字显示为方框
 
 ---

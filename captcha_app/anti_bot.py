@@ -58,6 +58,37 @@ def record_success(ip, api_key=""):
     _fail_lock_until.pop(k, None)
 
 
+def _login_key(ip):
+    return f"login|{ip}"
+
+
+def login_locked(ip) -> tuple:
+    """管理登录失败锁定，返回 (locked, remaining_seconds)"""
+    now_t = now()
+    k = _login_key(ip)
+    until = _fail_lock_until.get(k, 0)
+    if until > now_t:
+        return True, int(until - now_t) + 1
+    if k in _fail_lock_until:
+        _fail_lock_until.pop(k, None)
+        _fail_counter.pop(k, None)
+    return False, 0
+
+
+def record_login_fail(ip):
+    k = _login_key(ip)
+    _fail_counter[k] += 1
+    if _fail_counter[k] >= config.LOGIN_LOCK_THRESHOLD:
+        _fail_lock_until[k] = now() + config.LOGIN_LOCK_SECONDS
+        _fail_counter[k] = 0
+
+
+def record_login_success(ip):
+    k = _login_key(ip)
+    _fail_counter.pop(k, None)
+    _fail_lock_until.pop(k, None)
+
+
 def analyze_slider_track(track, offset_x, duration_ms) -> tuple:
     """
     分析滑动轨迹是否像真人。
