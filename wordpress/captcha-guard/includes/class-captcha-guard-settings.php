@@ -151,6 +151,13 @@ class Captcha_Guard_Settings {
 			'captcha-guard',
 			'cg_integrations'
 		);
+		add_settings_field(
+			'comment_only_guests',
+			__( '评论验证码仅游客', 'captcha-guard' ),
+			array( $this, 'field_comment_guests' ),
+			'captcha-guard',
+			'cg_integrations'
+		);
 	}
 
 	/**
@@ -204,6 +211,7 @@ class Captcha_Guard_Settings {
 			$out['fail_message'] = '安全验证未通过，请重试。';
 		}
 		$out['bypass_when_unavailable'] = empty( $input['bypass_when_unavailable'] ) ? 0 : 1;
+		$out['comment_only_guests']     = isset( $input['comment_only_guests'] ) ? 1 : 0;
 
 		$out['integrations'] = array();
 		if ( isset( $input['integrations'] ) && is_array( $input['integrations'] ) ) {
@@ -337,5 +345,10 @@ class Captcha_Guard_Settings {
 			);
 		}
 		echo '</fieldset>';
+	}
+
+	public function field_comment_guests() {
+		$checked = $this->guard->option( 'comment_only_guests', 1 ) ? ' checked="checked"' : '';
+		echo '<label><input type="checkbox" name="' . esc_attr( CG_OPTION ) . '[comment_only_guests]" value="1"' . $checked . ' /> ' . esc_html__( '启用后仅未登录（游客）评论需要验证码，登录用户直接发表', 'captcha-guard' ) . '</label>';
 	}
 }

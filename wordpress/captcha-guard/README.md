@@ -2,7 +2,7 @@
 
 为开源验证码服务 [captcha_system](https://github.com/chinachat/captcha_system) 提供 WordPress 接入。在后台选择验证方式（滑动拼图 / 点选 / 文字），保护登录、注册、评论、找回密码等表单，抵御暴力破解与垃圾评论。
 
-- **版本**: 1.0.5
+- **版本**: 1.0.6
 - **兼容**: WordPress 5.8+ / PHP 7.4+
 - **依赖**: 需部署 captcha_system 验证码服务（v2.1.1+），插件本身零第三方 PHP 依赖
 

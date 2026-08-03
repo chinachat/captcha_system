@@ -90,9 +90,14 @@ class Captcha_Guard_Frontend {
 	private function build_config( $wanted ) {
 		$forms = array();
 		foreach ( $wanted as $name ) {
-			if ( $this->guard->integration_enabled( $name ) ) {
-				$forms[ $name ] = $this->form_map[ $name ];
+			if ( ! $this->guard->integration_enabled( $name ) ) {
+				continue;
 			}
+			// 评论验证码仅游客时，登录用户不注入拦截
+			if ( 'comment' === $name && $this->guard->comment_guest_only() && is_user_logged_in() ) {
+				continue;
+			}
+			$forms[ $name ] = $this->form_map[ $name ];
 		}
 		if ( empty( $forms ) ) {
 			return false;

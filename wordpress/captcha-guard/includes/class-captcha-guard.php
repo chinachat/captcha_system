@@ -32,6 +32,7 @@ class Captcha_Guard {
 		'pass_token_secret'       => '',
 		'sdk_url'                 => '',
 		'integrations'            => array( 'login' ),
+		'comment_only_guests'     => 1,
 		'fail_message'            => '安全验证未通过，请重试。',
 		'bypass_when_unavailable' => 0,
 	);
@@ -219,9 +220,21 @@ class Captcha_Guard {
 	}
 
 	/**
+	 * 评论验证码是否仅保护游客。
+	 *
+	 * @return bool
+	 */
+	public function comment_guest_only() {
+		return (bool) $this->option( 'comment_only_guests', 1 );
+	}
+
+	/**
 	 * 表单评论校验。
 	 */
 	public function check_comment_captcha() {
+		if ( $this->comment_guest_only() && is_user_logged_in() ) {
+			return; // 登录用户评论放行
+		}
 		$result = $this->verify()->check( isset( $_POST['cg_pass_token'] ) ? sanitize_text_field( wp_unslash( $_POST['cg_pass_token'] ) ) : '' );
 		if ( is_wp_error( $result ) ) {
 			wp_die( esc_html( $result->get_error_message() ), esc_html__( '安全验证未通过', 'captcha-guard' ), array( 'response' => 403 ) );
@@ -236,6 +249,9 @@ class Captcha_Guard {
 	 * @return array|WP_Error
 	 */
 	public function check_rest_comment_captcha( $prepared_comment, $request ) {
+		if ( $this->comment_guest_only() && is_user_logged_in() ) {
+			return $prepared_comment; // 登录用户评论放行
+		}
 		$result = $this->verify()->check( $request->get_param( 'cg_pass_token' ) );
 		if ( is_wp_error( $result ) ) {
 			return $result;
