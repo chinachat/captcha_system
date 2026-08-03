@@ -1,17 +1,22 @@
-# 动态验证码管理系统 v2.1.1
+# 动态验证码管理系统 v2.4.1
 
-纯 Python 实现的验证码服务，支持：
+纯 Python 实现的验证码服务（无第三方 Web 框架），支持滑动拼图、点选、文字三种验证方式，内置多用户体系、IP 限流、失败锁定与可选 Redis，配套 WordPress 接入插件。
 
-- **滑动拼图验证码**（服务端生成图片 + 轨迹行为校验）
-- **点选位置验证码**（依次点击汉字/字母，支持弹出框前端）
-- **文字验证码**（兼容旧接口）
-- **多 API Key 管理**、**IP 限流**、**失败锁定**
-- **可选 Redis** 存储 Token / 限流
-- **多用户体系**（管理员/普通用户、用户组配额、登录验证码）
-- **管理后台**（统计、日志、Key 管理、按 Key 使用统计）
-- **插件连接配置一键复制**（每个 Key 直接展示并复制插件所需的连接信息）
+- **依赖**：Python 3.10+、Pillow、PyJWT（可选 redis）
+- **仓库**：https://github.com/chinachat/captcha_system
 
-依赖：Python 3.10+、Pillow、PyJWT（可选 redis）
+---
+
+## 功能特性
+
+- **三种验证码**：滑动拼图（轨迹/时序行为校验）、点选（按序点击）、文字（兼容旧接口）
+- **多用户体系**：管理员 / 普通用户双角色、用户组配额、注册默认关闭
+- **登录验证码**：后台登录默认需图片验证码（防暴力破解）
+- **多 API Key 管理**：每 Key 连接配置一键复制、按 Key 使用统计、编辑/禁用/删除
+- **安全**：IP 限流（按 action 独立配额）、失败锁定、pass_token 一次性校验、JWT 固定算法
+- **高可用**：可选 Redis（Token 自动过期 + 多实例共享限流）；线程化服务器 + 连接上限 + 请求体上限
+- **构建友好**：自动选择国内/国际镜像源（基础镜像 + apt + pip）
+- **WordPress 插件**：后台选验证方式，保护登录/注册/评论/找回密码
 
 ---
 
@@ -19,897 +24,249 @@
 
 ```
 captcha_system/
-├── app.py                      # 启动入口
+├── app.py                      # 启动入口（线程化服务器 + 连接上限）
+├── build.sh                    # 自动选择国内/国际基础镜像源后构建
+├── docker-compose.yml          # 凭据从 .env 读取（.env 不入库）
+├── .env.example                # 环境变量模板
+├── requirements.txt            # 依赖锁定
 ├── captcha_app/
-│   ├── config.py               # 配置 / 环境变量
+│   ├── config.py               # 配置 / 环境变量 / 凭据 fail-fast 校验
 │   ├── utils.py                # JWT、时间、图片 base64
-│   ├── fonts.py                # 中文字体自动加载
-│   ├── db.py                   # SQLite
+│   ├── fonts.py                # 中文字体自动加载（含 Windows 字体扫描）
+│   ├── db.py                   # SQLite（旧库自动迁移）
 │   ├── redis_client.py         # 可选 Redis
-│   ├── rate_limit.py           # IP 限流
-│   ├── anti_bot.py             # 轨迹 / 时序 / 失败锁定
-│   ├── captcha_gen.py          # 图片生成
-│   ├── tokens.py               # Token 与验证日志
+│   ├── rate_limit.py           # IP 限流（按 action 独立配额）
+│   ├── anti_bot.py             # 轨迹 / 时序 / 失败锁定 / 登录锁定
+│   ├── captcha_gen.py          # 图片生成（字形按 bbox 精确渲染）
+│   ├── tokens.py               # Token 与验证日志（含 pass_token 一次性消费）
 │   ├── api_keys.py             # API Key CRUD
-│   ├── stats.py                # 统计
+│   ├── users.py                # 多用户：用户组 / 用户 / 配额 / 密码哈希
+│   ├── stats.py                # 统计（按角色过滤）
 │   └── handler.py              # HTTP 路由
-├── templates/
-│   ├── demo.html               # 演示页（滑动 + 点选弹窗）
-│   └── admin.html              # 管理后台
+├── templates/                  # demo / admin / api-docs / guide
 ├── wordpress/
-│   └── captcha-guard/          # WordPress 接入插件（后台选验证方式，保护登录/注册/评论/找回密码）
-├── fonts/                      # 可选自备中文字体
-├── Dockerfile
-├── docker-compose.yml
-└── README.md
+│   └── captcha-guard/          # WordPress 接入插件（含安装包 zip）
+└── fonts/                      # 可选自备中文字体
 ```
 
 ---
 
-## 一、本地部署
+## 快速开始
 
-### 1. 环境要求
-
-- Python 3.10+
-- 系统中文字体（推荐）：
+### 本地运行
 
 ```bash
-# Debian / Ubuntu
-sudo apt-get update
-sudo apt-get install -y fonts-noto-cjk fonts-wqy-microhei fontconfig
+pip install -r requirements.txt
 
-# 或把字体文件放到 captcha_system/fonts/ 目录
-```
+# 设置生产凭据（ENV=production 下默认凭据会拒绝启动）
+export SECRET_KEY=$(openssl rand -hex 32)
+export ADMIN_PASS='强密码'
+export DEFAULT_API_KEY='业务用的 Key'
 
-### 2. 安装依赖
-
-```bash
-pip install pillow PyJWT
-# 若使用 Redis：
-pip install redis
-```
-
-### 3. 启动
-
-```bash
-cd captcha_system
 python3 app.py
 ```
 
-默认监听 `0.0.0.0:8080`。
+默认监听 `0.0.0.0:8080`：
 
 | 地址 | 说明 |
 |------|------|
-| http://127.0.0.1:8080/ | 前端演示 |
-| http://127.0.0.1:8080/admin | 管理后台 |
-| http://127.0.0.1:8080/api/v1/docs | API 文档（JSON） |
+| http://127.0.0.1:8080/ | 前端演示页 |
+| http://127.0.0.1:8080/admin | 管理后台（登录需验证码） |
 | http://127.0.0.1:8080/api/v1/health | 健康检查 |
+| http://127.0.0.1:8080/api/v1/docs | API 文档（JSON） |
 
-**默认账号**
+### Docker 部署
 
-| 项目 | 值 |
-|------|-----|
-| 管理员 | `admin` / `admin123` |
-| API Key | `demo-api-key-captcha-2026` |
+```bash
+cd captcha_system
+git pull origin main
 
-> 生产环境务必修改 `ADMIN_PASS`、`SECRET_KEY`、`DEFAULT_API_KEY`。
-> 注册功能默认关闭：普通用户由管理员在后台"用户管理"中创建并分配用户组（组配额限制可创建的 API Key 数量）。
+# ① 配置生产凭据（.env 不入库，git pull 永不冲突）
+cp .env.example .env
+# 编辑 .env 填入 SECRET_KEY / ADMIN_PASS / DEFAULT_API_KEY
+# 生成密钥：openssl rand -hex 32
+
+# ② 自动探测国内/国际基础镜像源后构建
+./build.sh
+
+# ③ 启动
+docker compose up -d captcha
+docker compose logs -f captcha
+```
+
+- 也可直接 `docker compose up -d --build`（默认国内 daocloud 基础镜像源）
+- 手动指定基础镜像：`BASE_IMAGE=python:3.12-slim docker compose up -d --build`
+- **镜像源自动选择**：`build.sh` 探测 daocloud → 阿里云 → Docker Hub；镜像内自动探测网络环境，apt 用阿里云源 / pip 用清华源（国际网络自动用官方源）
 
 ---
 
-## 二、多用户说明（v2.4.0+）
+## 多用户体系
 
 | 角色 | 权限 |
 |------|------|
-| 管理员（内置 `admin`） | 查看/管理所有 API Key（含指定归属创建）、创建用户组/用户、设置组配额、禁用/启用用户、查看全量统计与连接密钥 |
-| 普通用户 | 登录后台（需过登录验证码）后仅可查看/管理自己的 API Key（创建受组配额限制），统计仅含自己的 Key；**看不到 PASS_TOKEN_SECRET**（需管理员提供，防止伪造 pass_token） |
+| 管理员（内置 `admin`） | 管理全部 API Key（可指定归属创建）、创建/编辑/删除用户与用户组、设置组配额、启停用户、全量统计、查看 PASS_TOKEN_SECRET |
+| 普通用户 | 登录（需验证码）后仅管理自己的 Key（受组配额限制）、统计仅含自己的 Key、不可见 PASS_TOKEN_SECRET |
 
-- **用户组**：管理员创建，配置 `key_quota`（该组用户可创建的 API Key 上限，默认 5）。组内有用户的组不可删除。
-- **用户管理**：管理员创建用户（用户名+初始密码）、编辑（改密/改组/启停用）、删除（级联删除其 API Key）。
-- **登录验证码**：默认开启（`LOGIN_CAPTCHA=1`），所有登录（管理员+普通用户）需输入图片验证码，按 IP 限流 10 次/分钟，验证码一次性使用。
-
----
-
-## 二、Docker 部署（详细步骤）
-
-### 2.1 前置条件
-
-| 项目 | 要求 |
-|------|------|
-| 系统 | Linux / macOS / Windows（WSL2 推荐） |
-| Docker | 20.10+（`docker --version`） |
-| Docker Compose | V2（`docker compose version`） |
-| 磁盘 | 建议预留 ≥ 2GB（含中文字体层） |
-| 端口 | 宿主机 `8080` 未被占用 |
-
-安装 Docker（Ubuntu 示例）：
-
-```bash
-# 官方或系统包均可
-sudo apt-get update
-sudo apt-get install -y docker.io docker-compose-v2
-sudo systemctl enable --now docker
-sudo usermod -aG docker $USER   # 重新登录后生效
-```
-
-验证：
-
-```bash
-docker run --rm hello-world
-docker compose version
-```
+- **用户组配额**：管理员创建组并设 `key_quota`（默认 5）；普通用户超限创建返回 403
+- **用户管理**：注册默认关闭，管理员后台创建（密码 PBKDF2 哈希存储）；删除用户级联删除其 Key；组内有用户的组不可删除
+- **登录验证码**：默认开启（`LOGIN_CAPTCHA=1`），图片验证码一次性使用，获取限流 10 次/分钟/IP
+- **pass_token 在线校验**：普通用户拿不到密钥时，接入方可留空密钥改用 `POST /api/v1/captcha/validate`（服务端验签 + 一次性消费）
 
 ---
 
-### 2.2 获取代码并进入目录
+## 环境变量
 
-```bash
-# 若已有项目目录
-cd /path/to/captcha_system
-
-# 确认关键文件存在
-ls -la app.py Dockerfile docker-compose.yml captcha_app templates
-```
-
----
-
-### 2.3 修改生产配置（必做）
-
-编辑 `docker-compose.yml` 中的环境变量：
-
-```yaml
-environment:
-  - SECRET_KEY=请换成足够长的随机串   # 例如 openssl rand -hex 32
-  - ADMIN_USER=admin
-  - ADMIN_PASS=请换成强密码
-  - DEFAULT_API_KEY=请换成业务用的 Key
-  - RATE_LIMIT_GENERATE=30
-  - CAPTCHA_EXPIRE=120
-  - DB_PATH=/data/captcha.db
-```
-
-生成密钥示例：
-
-```bash
-openssl rand -hex 32
-# 输出类似：a1b2c3d4e5f6...
-```
-
-也可在启动时用环境变量覆盖，不必改文件：
-
-```bash
-export SECRET_KEY=$(openssl rand -hex 32)
-export ADMIN_PASS='YourStrongPass!2026'
-```
-
----
-
-### 2.4 配置镜像加速（国内网络强烈建议）
-
-若构建时出现 `TLS handshake timeout` / `failed to resolve source metadata`：
-
-```bash
-sudo mkdir -p /etc/docker
-sudo tee /etc/docker/daemon.json << 'JSON'
-{
-  "registry-mirrors": [
-    "https://docker.m.daocloud.io",
-    "https://docker.1ms.run",
-    "https://docker.xuanyuan.me"
-  ]
-}
-JSON
-sudo systemctl daemon-reload
-sudo systemctl restart docker
-```
- 
----
-
-### 2.5 构建并启动（基础版，仅 SQLite）
-
-```bash
-cd captcha_system
-
-# 方式一（推荐）：自动选择国内/国际镜像源后构建
-./build.sh
-
-# 方式二：docker compose 直接构建（默认国内 daocloud 源；apt/pip 源会在镜像内自动探测切换）
-docker compose up -d --build
-
-# 手动指定基础镜像源（例如使用官方 Docker Hub）
-# BASE_IMAGE=python:3.12-slim docker compose up -d --build
-```
-
-> **镜像源自动选择说明**：
-> - **基础镜像**：`build.sh` 探测 daocloud → 阿里云 → Docker Hub 的可达性，自动选择最快的（也可用 `BASE_IMAGE` 环境变量手动指定）
-> - **apt / pip 源**：镜像内自动探测网络环境——国内网络用阿里云 apt 源 + 清华 pip 源，国际网络用官方源，无需手动配置
-
-# 查看状态
-docker compose ps
-
-# 查看日志（确认出现「已启动」）
-docker compose logs -f captcha
-```
-
-成功日志示例：
-
-```text
-========================================================
-  动态验证码管理系统 v2.1（模块化）已启动
-  演示页面:  http://127.0.0.1:8080/
-  管理后台:  http://127.0.0.1:8080/admin
-  ...
-  存储: SQLite
-========================================================
-```
-
-浏览器访问：
-
-| 地址 | 说明 |
-|------|------|
-| http://服务器IP:8080/ | 演示页 |
-| http://服务器IP:8080/admin | 管理后台 |
-| http://服务器IP:8080/api/v1/health | 健康检查 |
-
-快速探测：
-
-```bash
-curl -s http://127.0.0.1:8080/api/v1/health
-# {"ok": true, "storage": "sqlite", ...}
-```
-
----
-
-### 2.6 启用 Redis（生产推荐）
-
-Redis 用于 Token 自动过期与多实例共享限流。
-
-**步骤 A — 编辑 `docker-compose.yml`**
-
-取消下列注释（去掉行首 `#`）：
-
-```yaml
-services:
-  captcha:
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      - redis
-
-  redis:
-    image: docker.m.daocloud.io/library/redis:7-alpine
-    restart: unless-stopped
-    volumes:
-      - redis_data:/data
-
-volumes:
-  captcha_data:
-  redis_data:
-```
-
-**步骤 B — 重建并启动**
-
-```bash
-docker compose up -d --build
-docker compose ps
-docker compose logs -f captcha
-```
-
-日志中应出现：`[INFO] Redis 已连接: redis://redis:6379/0`，且 health 中 `"storage": "redis"`。
-
-```bash
-curl -s http://127.0.0.1:8080/api/v1/health
-```
-
----
-
-### 2.7 仅用 docker 命令（不使用 compose）
-
-```bash
-cd captcha_system
-
-# 构建
-docker build -t captcha-system:2.1 .
-
-# 运行（数据持久化到命名卷）
-docker volume create captcha_data
-docker run -d --name captcha   -p 8080:8080   -e SECRET_KEY="$(openssl rand -hex 32)"   -e ADMIN_PASS="YourStrongPass"   -e DEFAULT_API_KEY="demo-api-key-captcha-2026"   -e DB_PATH=/data/captcha.db   -v captcha_data:/data   --restart unless-stopped   captcha-system:2.1
-
-docker logs -f captcha
-```
-
----
-
-### 2.8 数据持久化说明
-
-| 挂载 | 路径 | 内容 |
-|------|------|------|
-| 卷 `captcha_data` | 容器内 `/data` | SQLite 文件 `captcha.db` |
-| 卷 `redis_data`（可选） | Redis 数据目录 | Redis 持久化 |
-
-备份 SQLite：
-
-```bash
-docker compose exec captcha ls -la /data
-docker cp $(docker compose ps -q captcha):/data/captcha.db ./captcha-backup-$(date +%F).db
-```
-
----
-
-### 2.9 常用运维命令
-
-```bash
-# 查看运行状态
-docker compose ps
-
-# 实时日志
-docker compose logs -f captcha
-
-# 重启
-docker compose restart captcha
-
-# 停止并删除容器（保留数据卷）
-docker compose down
-
-# 停止并删除容器 + 数据卷（慎用）
-docker compose down -v
-
-# 修改代码或 Dockerfile 后重新构建
-docker compose up -d --build
-
-# 进入容器调试
-docker compose exec captcha bash
-# 容器内：fc-list :lang=zh | head   # 检查中文字体
-```
-
----
-
-### 2.10 反向代理（Nginx 示例）
-
-```nginx
-server {
-    listen 80;
-    server_name captcha.example.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-建议同时配置 HTTPS（Let's Encrypt / 云证书）。应用会读取 `X-Forwarded-For` 作为客户端 IP（限流与日志）。
-
----
-
-### 2.11 构建失败排查
-
-| 现象 | 处理 |
-|------|------|
-| `TLS handshake timeout` 拉基础镜像 | 配置 registry-mirrors；或改用阿里云/DaoCloud 基础镜像 |
-| `pip install` 超时 | Dockerfile 已用清华源；检查容器出网 |
-| 端口占用 `bind: address already in use` | 修改 compose 中 `"8080:8080"` 为 `"8081:8080"` |
-| 点选汉字方框 | 镜像已装 `fonts-noto-cjk`；`docker compose build --no-cache` 重装 |
-| 权限 / 卷无法写 | 确认 `DB_PATH=/data/captcha.db` 且挂载了 `/data` |
-| 旧容器配置未生效 | `docker compose down && docker compose up -d --build` |
-
-查看完整构建日志：
-
-```bash
-docker compose build --no-cache --progress=plain 2>&1 | tee build.log
-```
-
----
-
-### 2.12 资源占用参考
-
-| 组件 | 大约内存 |
-|------|----------|
-| captcha（含 Noto CJK 字体的进程） | 150–400MB |
-| redis:7-alpine | 10–30MB |
-
-首次构建因下载基础镜像与 `fonts-noto-cjk`，耗时可能 5–15 分钟，视网络而定。
-
----
-
-## 三、环境变量
-
-> **安全提示（v2.1.1+）**：设置 `ENV=production` 后，若 `ADMIN_PASS` / `DEFAULT_API_KEY` / `SECRET_KEY` 仍为默认或占位值，应用将**拒绝启动**（fail-fast），强制你配置强凭据。本地开发保持默认即可（仅告警）。Docker 镜像默认即 `ENV=production`。
+> 生产环境设置 `ENV=production` 后，`SECRET_KEY` / `ADMIN_PASS` / `DEFAULT_API_KEY` 为默认值将拒绝启动（fail-fast）。
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `HOST` | `0.0.0.0` | 监听地址 |
-| `PORT` | `8080` | 端口 |
-| `ENV` | `development` | `production` 时启用默认凭据 fail-fast 校验 |
-| `ALLOW_INSECURE_DEFAULTS` | 空 | `1/true` 时即使在 production 也允许默认凭据（仅调试用） |
-| `SECRET_KEY` | 随机 | JWT 签名密钥（生产请固定） |
-| `ADMIN_USER` | `admin` | 后台用户名 |
-| `ADMIN_PASS` | `admin123` | 后台密码（production 必须修改） |
-| `DEFAULT_API_KEY` | `demo-api-key-captcha-2026` | 默认 API Key（production 必须修改） |
+| `HOST` / `PORT` | `0.0.0.0` / `8080` | 监听地址与端口 |
+| `ENV` | `development` | `production` 启用凭据 fail-fast 校验 |
+| `ALLOW_INSECURE_DEFAULTS` | 空 | 生产环境也允许默认凭据（仅调试） |
+| `SECRET_KEY` | 随机（不持久） | JWT 签名密钥，生产必须显式设置并固定 |
+| `PASS_TOKEN_SECRET` | 回退 `SECRET_KEY` | 业务 pass_token 独立签发密钥（减小扩散面） |
+| `ADMIN_USER` / `ADMIN_PASS` | `admin` / `admin123` | 内置管理员凭据 |
+| `DEFAULT_API_KEY` | `demo-api-key-captcha-2026` | 默认 API Key |
 | `CAPTCHA_EXPIRE` | `120` | 验证码有效秒数 |
-| `PASS_TOKEN_EXPIRE` | `60` | 业务 pass_token（JWT）有效秒数，与验证码时效分离 |
-| `MAX_BODY_BYTES` | `65536` | 请求体大小上限，防内存耗尽 |
-| `REQUEST_TIMEOUT` | `15` | 单连接请求读取超时（秒），防慢速连接攻击 |
-| `MAX_CONCURRENT` | `64` | 最大并发连接数，超限直接拒绝新连接（防连接洪水） |
-| `DB_PATH` | `/tmp/captcha_system.db` | SQLite 路径 |
+| `PASS_TOKEN_EXPIRE` | `60` | pass_token（JWT）有效秒数 |
+| `MAX_BODY_BYTES` | `65536` | 请求体上限（防内存耗尽） |
+| `REQUEST_TIMEOUT` | `15` | 单连接读取超时（秒） |
+| `MAX_CONCURRENT` | `64` | 最大并发连接（超限拒绝新连接） |
+| `DB_PATH` | `/tmp/captcha_system.db` | SQLite 路径（Docker 用 `/data/captcha.db`） |
 | `REDIS_URL` | 空 | 如 `redis://127.0.0.1:6379/0` |
-| `PASS_TOKEN_SECRET` | 空（回退 `SECRET_KEY`） | 业务 pass_token 独立签发密钥，生产建议单独设置，减小密钥扩散面 |
-| `RATE_LIMIT_GENERATE` | `30` | 每 IP 每分钟生成次数上限 |
-| `SLIDER_MIN_MS` | `280` | 滑动最短耗时（毫秒） |
-| `SLIDER_MIN_TRACK` | `5` | 滑动轨迹最少采样点 |
-| `CLICK_MIN_TOTAL_MS` | `600` | 点选总最短耗时 |
-| `CLICK_MIN_GAP_MS` | `120` | 两次点击最小间隔 |
-| `FAIL_LOCK_THRESHOLD` | `8` | 连续失败锁定阈值 |
-| `FAIL_LOCK_SECONDS` | `300` | 锁定时长（秒） |
-| `LOGIN_LOCK_THRESHOLD` | `5` | 管理登录失败锁定阈值（IP 维度） |
-| `LOGIN_LOCK_SECONDS` | `300` | 管理登录锁定时长（秒） |
-| `LOGIN_CAPTCHA` | `1` | 登录接口验证码开关（`0` 关闭；所有登录用户共用，防暴力破解） |
-| `LOGIN_CAPTCHA_RATE` | `10` | 登录验证码获取限流（次/分钟/IP） |
-| `TRUSTED_PROXIES` | 空 | 可信代理 IP/CIDR（逗号分隔）。仅当请求真实来源 IP 命中该列表时才信任 `X-Forwarded-For`，防止客户端伪造绕过限流。例：`127.0.0.1,192.168.1.0/24` |
+| `TRUSTED_PROXIES` | 空 | 可信代理 IP/CIDR，仅命中时才信任 `X-Forwarded-For` |
+| `RATE_LIMIT_GENERATE` | `30` | 生成接口限流（次/分钟/IP） |
+| `SLIDER_MIN_MS` / `SLIDER_MAX_MS` / `SLIDER_MIN_TRACK` | `280` / `30000` / `5` | 滑动行为阈值 |
+| `CLICK_MIN_TOTAL_MS` / `CLICK_MIN_GAP_MS` | `600` / `120` | 点选时序阈值 |
+| `FAIL_LOCK_THRESHOLD` / `FAIL_LOCK_SECONDS` | `8` / `300` | 验证失败锁定（IP+Key） |
+| `LOGIN_LOCK_THRESHOLD` / `LOGIN_LOCK_SECONDS` | `5` / `300` | 登录失败锁定（IP） |
+| `LOGIN_CAPTCHA` / `LOGIN_CAPTCHA_RATE` | `1` / `10` | 登录验证码开关 / 获取限流 |
 
 ---
 
-## 四、鉴权说明
+## 鉴权说明
 
-### 业务接口（验证码生成 / 校验）
-
-所有 `/api/v1/captcha/*` 请求需携带：
-
-```http
-X-API-Key: <your-api-key>
-```
-
-或：
-
-```http
-Authorization: Bearer <your-api-key>
-```
-
-### 管理接口
-
-先登录获取 JWT，再携带：
-
-```http
-Authorization: Bearer <admin-jwt>
-```
+- **业务接口**（`/api/v1/captcha/*`）：Header `X-API-Key: <key>` 或 `Authorization: Bearer <key>`
+- **管理接口**：登录后携带 `Authorization: Bearer <jwt>`（JWT 含 `role: admin|user`，普通用户仅访问自己的资源）
+- 通用响应 `{ "ok": true/false, "msg": "...", "data": {} }`；限流/锁定返回 **429** 且含 `retry_after`
 
 ---
 
-## 五、前端接口文档
+## API 接口
 
-Base URL：`http://127.0.0.1:8080`  
-Content-Type：`application/json`
-
-通用响应：
-
-```json
-{ "ok": true/false, "msg": "...", "data": { } }
-```
-
-限流 / 锁定时 HTTP 状态码为 **429**，body 含 `retry_after`（秒）。
-
----
-
-### 5.1 健康检查
+### 验证码业务接口
 
 ```http
-GET /api/v1/health
+POST /api/v1/captcha/slider/generate     POST /api/v1/captcha/slider/verify
+POST /api/v1/captcha/click/generate      POST /api/v1/captcha/click/verify
+POST /api/v1/captcha/text/generate       POST /api/v1/captcha/text/verify
 ```
 
-**响应示例**
+- 滑动校验 body：`{"token","offset_x","duration_ms","track":[{x,t}]}`；`offset_x` 为拼图块左上角原图像素 x，`track` 缺失/过短/线性/超速判定异常
+- 点选校验 body：`{"token","points":[{x,y}],"timings":[ms...]}`；坐标按原图像素，容差约 28px，时序过快/间隔过短判定异常
+- 文字校验 body：`{"token","code"}`
+- 通过后返回 `pass_token`（JWT，默认 60 秒有效）
 
-```json
-{
-  "ok": true,
-  "ts": 1710000000.0,
-  "storage": "sqlite",
-  "rate_limit": 30
-}
-```
-
----
-
-### 5.2 连接测试（v2.2.0+）
-
-供接入方（如 WordPress 插件）验证配置：
+### 连接测试（v2.2.0+）
 
 ```http
 POST /api/v1/captcha/test
-X-API-Key: demo-api-key-captcha-2026
 ```
+校验 API Key 后用服务端密钥签发测试 pass_token，返回 `server_secret_explicit`（是否显式配置 PASS_TOKEN_SECRET）。接入方可反向验证密钥一致性（插件"测试连接"按钮即用此接口）。
 
-**响应示例**
-
-```json
-{
-  "ok": true,
-  "data": {
-    "pass_token": "eyJhbGciOiJIUzI1NiIs...",
-    "server_secret_explicit": false,
-    "ts": 1710000000.0
-  }
-}
-```
-
-| 字段 | 说明 |
-|------|------|
-| `pass_token` | 用服务端 `PASS_TOKEN_SECRET`（未显式设置时回退 `SECRET_KEY`）签发的 60 秒测试 JWT，调用方可用自己配置的密钥反向验证一致性 |
-| `server_secret_explicit` | 服务端是否显式配置了 `PASS_TOKEN_SECRET`（`false` 表示回退 `SECRET_KEY`） |
-
-接口需 API Key 且计入生成限流配额。
-
----
-
-### 5.2 滑动拼图 — 生成
+### 在线校验（v2.4.1+）
 
 ```http
-POST /api/v1/captcha/slider/generate
-X-API-Key: demo-api-key-captcha-2026
+POST /api/v1/captcha/validate
+{ "pass_token": "eyJ..." }
 ```
+服务端验签 + 一次性消费（jti 独立记录）。供未配置密钥的接入方（如普通用户的 WordPress 插件）使用。
 
-**响应**
-
-```json
-{
-  "ok": true,
-  "data": {
-    "token": "uuid-...",
-    "background": "data:image/png;base64,...",
-    "puzzle": "data:image/png;base64,...",
-    "puzzle_y": 32,
-    "pad": 8,
-    "width": 320,
-    "height": 160,
-    "expires_in": 120
-  }
-}
-```
-
-| 字段 | 说明 |
-|------|------|
-| `token` | 一次性校验凭证 |
-| `background` | 带缺口的背景图（base64） |
-| `puzzle` | 拼图块（含 8px 内边距） |
-| `puzzle_y` | 拼图块 **CSS top**（原图像素，已减 pad） |
-| `width` / `height` | 原图尺寸，用于缩放换算 |
-
-**前端注意**
-
-- 画布逻辑尺寸固定 **320×160**
-- 拼图块尺寸 **58×58**（42 + 2×8）
-- `piece.style.top = puzzle_y * scale`
-- `scale = 显示宽度 / 320`
-
----
-
-### 5.3 滑动拼图 — 校验
-
-```http
-POST /api/v1/captcha/slider/verify
-X-API-Key: demo-api-key-captcha-2026
-Content-Type: application/json
-```
-
-**请求体**
-
-```json
-{
-  "token": "uuid-...",
-  "offset_x": 128.5,
-  "duration_ms": 650,
-  "track": [
-    { "x": 0, "t": 0 },
-    { "x": 12.3, "t": 32 },
-    { "x": 45.0, "t": 80 }
-  ]
-}
-```
-
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| `token` | 是 | 生成接口返回的 token |
-| `offset_x` | 是 | 拼图块左上角最终 x（**原图像素**） |
-| `duration_ms` | 强烈建议 | 滑动总耗时（毫秒） |
-| `track` | 强烈建议 | 轨迹采样，`t` 为相对起点的毫秒 |
-
-**成功**
-
-```json
-{
-  "ok": true,
-  "msg": "验证通过",
-  "pass_token": "eyJhbGciOiJIUzI1NiIs..."
-}
-```
-
-**失败**
-
-```json
-{ "ok": false, "msg": "验证失败，请重试" }
-```
-
-或行为异常：
-
-```json
-{ "ok": false, "msg": "操作异常，请重新完成滑动" }
-```
-
-`pass_token` 为短期 JWT，业务方可自行校验签名与过期时间。
-
----
-
-### 5.4 点选验证 — 生成
-
-```http
-POST /api/v1/captcha/click/generate
-X-API-Key: demo-api-key-captcha-2026
-```
-
-**响应**
-
-```json
-{
-  "ok": true,
-  "data": {
-    "token": "uuid-...",
-    "image": "data:image/png;base64,...",
-    "prompt": "请依次点击：天 → 地 → 人",
-    "chars": ["天", "地", "人"],
-    "count": 3,
-    "width": 320,
-    "height": 180,
-    "expires_in": 120
-  }
-}
-```
-
-| 字段 | 说明 |
-|------|------|
-| `image` | 点选底图 |
-| `chars` | 需**按顺序**点击的字符 |
-| `count` | 需点击次数 |
-| `width` / `height` | 原图尺寸（默认 320×180） |
-
----
-
-### 5.5 点选验证 — 校验
-
-```http
-POST /api/v1/captcha/click/verify
-X-API-Key: demo-api-key-captcha-2026
-Content-Type: application/json
-```
-
-**请求体**
-
-```json
-{
-  "token": "uuid-...",
-  "points": [
-    { "x": 120.0, "y": 80.5 },
-    { "x": 200.0, "y": 95.0 },
-    { "x": 60.0, "y": 130.0 }
-  ],
-  "timings": [0, 320, 710]
-}
-```
-
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| `token` | 是 | 生成接口 token |
-| `points` | 是 | 点击坐标（**原图像素**），顺序与 `chars` 一致 |
-| `timings` | 强烈建议 | 每次点击相对第一下的毫秒时间戳 |
-
-坐标换算示例：
-
-```js
-const scale = displayWidth / 320;
-const x = (clientX - boxLeft) / scale;
-const y = (clientY - boxTop) / scale;
-```
-
-点击容差约 **28 像素**（圆心距离）。
-
-**成功 / 失败** 响应格式同滑动接口。
-
----
-
-### 5.6 文字验证码（兼容）
-
-```http
-POST /api/v1/captcha/text/generate
-POST /api/v1/captcha/text/verify
-```
-
-校验 body：
-
-```json
-{ "token": "...", "code": "A3K9" }
-```
-
-新业务推荐使用点选或滑动接口。
-
----
-
-### 5.7 前端接入示例（点选弹窗）
-
-```js
-const API_KEY = "demo-api-key-captcha-2026";
-const headers = {
-  "Content-Type": "application/json",
-  "X-API-Key": API_KEY
-};
-
-// 1. 打开弹窗后生成
-async function openCaptcha() {
-  const res = await fetch("/api/v1/captcha/click/generate", {
-    method: "POST", headers
-  });
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.msg);
-  const { token, image, chars, count, width } = json.data;
-  // 显示 image，提示 chars
-  // 收集用户点击 → points[], timings[]
-}
-
-// 2. 提交
-async function submit(token, points, timings) {
-  const res = await fetch("/api/v1/captcha/click/verify", {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ token, points, timings })
-  });
-  const json = await res.json();
-  if (json.ok) {
-    // 将 json.pass_token 交给业务登录/提交接口
-    return json.pass_token;
-  }
-  throw new Error(json.msg);
-}
-```
-
-滑动接入需额外采集 `track` 与 `duration_ms`，详见演示页 `templates/demo.html`。
-
----
-
-## 六、管理后台 API
-
-### 6.1 登录
-
-```http
-POST /api/v1/admin/login
-Content-Type: application/json
-
-{ "username": "admin", "password": "admin123" }
-```
-
-**响应**
-
-```json
-{ "ok": true, "token": "<jwt>", "msg": "登录成功" }
-```
-
-后续请求 Header：`Authorization: Bearer <jwt>`
-
-### 6.2 统计
-
-```http
-GET /api/v1/stats
-Authorization: Bearer <jwt>
-```
-
-返回总次数、成功率、滑动/点选/文字分类、最近 50 条日志、API Key 列表等。
-
-### 6.3 API Key 管理
+### 管理接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/v1/admin/keys` | 列出全部 Key |
-| POST | `/api/v1/admin/keys` | 创建，body: `{"name":"业务名","note":"备注"}` |
-| PUT | `/api/v1/admin/keys/{key}/enable` | 启用 |
-| PUT | `/api/v1/admin/keys/{key}/disable` | 禁用 |
-| DELETE | `/api/v1/admin/keys/{key}` | 删除（默认 Key 不可删） |
-
-创建响应示例：
-
-```json
-{
-  "ok": true,
-  "data": {
-    "key": "ak-xxxx",
-    "name": "官网",
-    "note": "web"
-  }
-}
-```
+| POST | `/api/v1/admin/login` | 登录（需验证码），返回 JWT + role |
+| POST | `/api/v1/admin/captcha/generate` | 登录验证码（无需 API Key） |
+| GET | `/api/v1/stats` | 统计（管理员全量 / 普通用户仅自己的） |
+| GET / POST | `/api/v1/admin/keys` | Key 列表（含 connect 配置）/ 创建（普通用户受配额） |
+| PUT | `/api/v1/admin/keys/{key}` | 编辑名称/备注 |
+| PUT / DELETE | `/api/v1/admin/keys/{key}/enable\|disable` | 启停 / 删除（仅本人或管理员） |
+| GET / POST | `/api/v1/admin/users` | 用户列表 / 创建（仅管理员） |
+| PUT / DELETE | `/api/v1/admin/users/{username}` | 编辑（改密/改组/启停）/ 删除（级联删 Key） |
+| GET / POST | `/api/v1/admin/groups` | 用户组列表 / 创建（仅管理员） |
+| PUT / DELETE | `/api/v1/admin/groups/{id}` | 编辑配额 / 删除（组内有用户拒绝） |
 
 ---
 
-## 七、抗自动化说明
+## WordPress 插件接入
+
+仓库内置 `wordpress/captcha-guard/`（安装包 `captcha-guard-1.0.4.zip`）：后台选择验证方式，保护登录/注册/评论/找回密码表单。
+
+**配置**：
+1. 服务端后台 → API Key 卡片 → "复制插件配置"（服务地址 / API Key / PASS_TOKEN_SECRET）
+2. WordPress → 设置 → Captcha Guard → 粘贴并保存，勾选保护表单
+3. 点击"测试连接"验证（服务连通 / API Key / 密钥一致性 / SDK 地址）
+
+**两种校验模式**：
+- **本地验签**（推荐，管理员）：填写 PASS_TOKEN_SECRET，插件本地验证 JWT
+- **在线校验**（普通用户）：密钥留空，插件调用 `/api/v1/captcha/validate`（服务端 v2.4.1+）
+
+**内置保护**：登录保护开启时自动拒绝 XML-RPC 认证；REST 评论创建同样受保护。详见 `wordpress/captcha-guard/README.md`。
+
+---
+
+## 抗自动化
 
 | 能力 | 说明 |
 |------|------|
 | 滑动轨迹 | 最短耗时、最少采样点、线性度、速度异常检测 |
-| 点选时序 | 总时长、点击间隔 |
+| 点选时序 | 总时长、点击间隔、时间单调性 |
 | 失败锁定 | 同一 IP+Key 连续失败达阈值后临时封禁 |
 | 生成限流 | 每 IP 每分钟生成次数上限 |
-| 图像干扰 | 点选字符旋转、噪声线；拼图缺口形状 |
-| Token | 一次性使用 + 默认 120 秒过期 |
+| 登录防护 | 登录验证码 + IP 失败锁定 + 获取限流 |
+| 图像干扰 | 点选字符旋转/噪声线；拼图缺口形状随机化 |
+| Token | 一次性使用 + 默认 120 秒过期（Redis 自动过期） |
 
 无轨迹/时序数据的校验请求会被拒绝或判定异常。
 
 ---
 
-## 八、生产建议
+## 生产建议
 
-1. 设置 `ENV=production` 并修改 `ADMIN_PASS`、`SECRET_KEY`、`DEFAULT_API_KEY`（不修改将拒绝启动）
-2. 固定 `SECRET_KEY`，避免重启后 JWT 全部失效
-3. 启用 Redis（多实例共享 Token 与限流）
-4. 前置 Nginx / Caddy 做 HTTPS 与额外限流；若使用反向代理，配置 `TRUSTED_PROXIES` 后应用才会信任 `X-Forwarded-For`（否则按真实来源 IP 限流，防伪造）
-5. 业务接口校验 `pass_token` 的 JWT 签名与 `exp`（默认 60 秒有效，见 `PASS_TOKEN_EXPIRE`）
-6. 安装中文字体，避免点选汉字显示为方框
+1. `ENV=production` + 凭据写入 `.env`，`SECRET_KEY` 用 `openssl rand -hex 32` 生成并固定
+2. 建议单独设置 `PASS_TOKEN_SECRET`，缩小业务侧密钥扩散面
+3. 启用 Redis 实现多实例共享 Token 与限流
+4. 前置 Nginx/Caddy 做 HTTPS 与连接级限流；配置 `TRUSTED_PROXIES` 后才信任 `X-Forwarded-For`
+5. 确认 `DB_PATH` 持久化（Docker 卷 `/data`），避免重启丢失 Key/用户
+6. 业务方校验 pass_token：本地验签需保管密钥；无密钥场景使用在线校验接口
+7. 普通用户按组分配配额；删除离职用户会级联删除其 Key
+8. 中文字体：Docker 镜像已内置 Noto CJK；裸机安装 `fonts-noto-cjk` 或放入 `fonts/`
 
 ---
 
-## 九、常见问题
+## 常见问题
 
-**Q: 汉字不显示？**  
+**Q: 登录提示"验证码错误或已过期"？**
+点击验证码图片刷新重试；验证码一次性使用；频繁获取会被限流（429，默认 10 次/分钟）。
+
+**Q: 普通用户配置插件时 PASS_TOKEN_SECRET 填什么？**
+留空——插件自动切换在线校验模式（服务端 v2.4.1+）。
+
+**Q: 服务端重启后 Key/用户丢失？**
+`DB_PATH` 默认在 `/tmp`，请指向持久化目录（Docker 用 `/data` 卷）。
+
+**Q: 后台提示"无效或缺失 API Key"？**
+服务端数据库无该 Key（数据库被重置或 Key 被禁用）。后台重新创建 Key 并复制配置；确认 `DB_PATH` 持久化。
+
+**Q: 构建卡在 apt-get？**
+用 `./build.sh` 或 `docker compose up -d --build`——镜像内自动探测网络切换阿里云 apt 源 / 清华 pip 源。
+
+**Q: 汉字显示为方框？**
 安装 `fonts-noto-cjk` 或将字体放入 `fonts/` 目录后重启。
 
-**Q: 滑动对不齐？**  
-使用接口返回的 `puzzle_y` 作为块的 `top`；`offset_x` 为块左上角原图 x（已按 pad 校正）。
-
-**Q: 点选无成功提示？**  
-演示页已修复；自建前端请确保提示元素未被 `display:none` 内联样式盖住。
-
-**Q: `name 'uuid' is not defined`？**  
-请使用当前模块化版本（`captcha_app/tokens.py` 已包含 `import uuid`）。
-
 ---
 
-## 十、License
+## License
 
-仅供学习与内部集成参考。生产使用请自行评估安全策略并完成加固。
-
----
-
-## 十一、前端接入插件（CaptchaSDK）
-
-### 引入
-
-```html
-<script src="https://你的域名/static/captcha-sdk.js"></script>
-```
-
-同域可写：
-
-```html
-<script src="/static/captcha-sdk.js"></script>
-```
-
-### 调用
-
-```js
-// 点选弹窗
-CaptchaSDK.verify({
-  apiKey: "demo-api-key-captcha-2026",
-  type: "click",       // 或 "slider"
-  baseUrl: ""          // 跨域时填 https://captcha.example.com
-}).then(function (passToken) {
-  // 将 passToken 随业务请求提交到后端
-  console.log("pass_token", passToken);
-}).catch(function (err) {
-  console.warn(err.message); // 用户取消或失败
-});
-```
-
-### 说明
-
-- 自动注入样式与弹窗，无需改业务页面布局
-- 已内置轨迹 / 时序采集，与服务端抗自动化策略匹配
-- 成功返回 `pass_token`（JWT），业务服务端应校验其签名与过期时间
-
-管理后台「验证码仪表盘」中也可查看接入提示与实时统计。
+MIT License，仅供学习与内部集成参考；生产使用请自行评估安全策略并完成加固（详见 `wordpress/captcha-guard/ASSESSMENT_REPORT.md` 与 guide 文档）。
