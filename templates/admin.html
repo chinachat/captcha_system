@@ -102,6 +102,17 @@
       padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px;
     }
     .key-row code { background: var(--bg); padding: 4px 8px; border-radius: 4px; font-size: 12px; word-break: break-all; }
+    /* 连接配置代码块模式 */
+    .cg-cfg {
+      flex: 1; min-width: 160px;
+      font-family: Consolas, Menlo, Monaco, "Courier New", monospace;
+      font-size: 12px; line-height: 1.6;
+      background: #0f172a; color: #e2e8f0;
+      border: 1px solid #1e293b; border-radius: 6px;
+      padding: 6px 10px;
+      word-break: break-all; white-space: pre-wrap;
+      user-select: all;
+    }
     .pill { font-size: 11px; padding: 2px 8px; border-radius: 99px; }
     .pill-on { background: #065f46; color: #6ee7b7; }
     .pill-off { background: #7f1d1d; color: #fca5a5; }
@@ -399,6 +410,20 @@ async function loadStats() {
 
     document.getElementById("apiKeys").innerHTML = (d.api_keys || []).map((k, i) => {
       const c = k.connect || {};
+      const cfgRow = (label, field) => {
+        const v = String(c[field] || "");
+        const short = v.slice(0, 8);
+        const toggleBtn = v.length > 8
+          ? `<button class="btn btn-sm btn-gray" data-toggle="1" onclick="toggleField(${i}, '${field}')">展开</button>`
+          : "";
+        return `
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
+          <span style="width:130px;font-size:12px;color:#64748b">${label}</span>
+          <code class="cg-cfg" id="cg-field-${field}-${i}" data-full="0">${esc(short)}${v.length > 8 ? "…" : ""}</code>
+          ${toggleBtn}
+          <button class="btn btn-sm btn-gray" onclick="copyField(${i}, '${field}')">复制</button>
+        </div>`;
+      };
       const keyBlock = `
       <div class="key-block" style="margin-bottom:10px;padding:8px 10px;border:1px solid rgba(128,140,160,.25);border-radius:8px">
         <div class="key-row">
@@ -414,22 +439,9 @@ async function loadStats() {
           </span>
         </div>
         <div style="margin-top:8px;font-size:12px;color:#8b9bb8">插件连接配置（WordPress 后台 → 设置 → Captcha Guard）：</div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
-          <span style="width:130px;font-size:12px;color:#64748b">API 服务地址</span>
-          <code style="flex:1;min-width:160px;word-break:break-all">${esc(c.base_url || "-")}</code>
-          <button class="btn btn-sm btn-gray" onclick="copyField(${i}, 'base_url')">复制</button>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
-          <span style="width:130px;font-size:12px;color:#64748b">API Key</span>
-          <code style="flex:1;min-width:160px;word-break:break-all">${esc(c.api_key || "-")}</code>
-          <button class="btn btn-sm btn-gray" onclick="copyField(${i}, 'api_key')">复制</button>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
-          <span style="width:130px;font-size:12px;color:#64748b">PASS_TOKEN_SECRET</span>
-          <code id="cg-secret-${i}" data-full="0" style="flex:1;min-width:160px;word-break:break-all">${esc(String(c.pass_token_secret || "").slice(0, 8))}…</code>
-          <button class="btn btn-sm btn-gray" data-toggle="1" onclick="toggleSecret(${i})">展开</button>
-          <button class="btn btn-sm btn-gray" onclick="copyField(${i}, 'pass_token_secret')">复制</button>
-        </div>
+        ${cfgRow("API 服务地址", "base_url")}
+        ${cfgRow("API Key", "api_key")}
+        ${cfgRow("PASS_TOKEN_SECRET", "pass_token_secret")}
         <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <button class="btn btn-sm" onclick="copyConnect('${escAttr(k.key)}')">复制全部配置</button>
           <span style="font-size:12px;color:#b45309">PASS_TOKEN_SECRET 为服务端签名密钥，请妥善保管，勿泄露。</span>
@@ -440,18 +452,19 @@ async function loadStats() {
   } catch (e) { console.error(e); }
 }
 
-/* 展开/收起 PASS_TOKEN_SECRET（避免 64 位密钥撑爆布局） */
-function toggleSecret(idx) {
-  const el = document.getElementById("cg-secret-" + idx);
+/* 展开/收起连接配置字段（API Key / PASS_TOKEN_SECRET 等长值） */
+function toggleField(idx, field) {
+  const el = document.getElementById("cg-field-" + field + "-" + idx);
   const k = (window.__cg_keys || [])[idx];
   if (!el || !k || !k.connect) return;
+  const full = String(k.connect[field] || "");
   const btn = el.parentElement.querySelector("[data-toggle]");
   if (el.dataset.full === "1") {
-    el.textContent = String(k.connect.pass_token_secret || "").slice(0, 8) + "…";
+    el.textContent = full.slice(0, 8) + (full.length > 8 ? "…" : "");
     el.dataset.full = "0";
     if (btn) btn.textContent = "展开";
   } else {
-    el.textContent = String(k.connect.pass_token_secret || "");
+    el.textContent = full;
     el.dataset.full = "1";
     if (btn) btn.textContent = "收起";
   }
