@@ -43,7 +43,25 @@
     document.head.appendChild(s);
   }
 
-  function verifyAndSubmit(form) {
+  // 向表单注入隐藏字段（不存在时创建），验证码通过后回填
+  function ensureTokenField(form) {
+    var h = form.querySelector('input[name="cg_pass_token"]');
+    if (!h) {
+      h = document.createElement('input');
+      h.type = 'hidden';
+      h.name = 'cg_pass_token';
+      h.value = '';
+      form.appendChild(h);
+    }
+    return h;
+  }
+
+  // 重放标志：SDK 完成后的 submit 事件放行（交给主题的 Ajax 处理器或默认提交）
+  var replaying = false;
+
+  function interceptSubmit(e, form, tokenField) {
+    e.preventDefault();
+    e.stopPropagation();
     sdkReady(function () {
       if (!window.CaptchaSDK) {
         if (cfg.bypassWhenUnavailable) {
@@ -58,12 +76,15 @@
         type: cfg.type,
         baseUrl: cfg.baseUrl
       }).then(function (passToken) {
-        var input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'cg_pass_token';
-        input.value = passToken;
-        form.appendChild(input);
-        form.submit();
+        tokenField.value = passToken;
+        replaying = true;
+        // 重放 submit 事件：Ajax 主题（如 Argon）由其处理器接管并序列化表单；
+        // 无处理器拦截时走默认提交兜底
+        var ev = new Event('submit', { bubbles: true, cancelable: true });
+        form.dispatchEvent(ev);
+        if (!ev.defaultPrevented) {
+          form.submit();
+        }
       }).catch(function (err) {
         fail(err && err.message);
       });
@@ -72,15 +93,17 @@
 
   // 捕获阶段监听，确保在主题自身 submit 处理前拦截。
   document.addEventListener('submit', function (e) {
+    if (replaying) {
+      replaying = false;
+      return;
+    }
     var f = e.target;
     if (!f || !f.matches) {
       return;
     }
     for (var i = 0; i < selectors.length; i++) {
       if (f.matches(selectors[i])) {
-        e.preventDefault();
-        e.stopPropagation();
-        verifyAndSubmit(f);
+        interceptSubmit(e, f, ensureTokenField(f));
         return;
       }
     }

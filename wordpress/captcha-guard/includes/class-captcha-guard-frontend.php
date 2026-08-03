@@ -53,9 +53,12 @@ class Captcha_Guard_Frontend {
 	}
 
 	/**
-	 * 普通页面资源（仅评论表单需要时）。
+	 * 普通页面资源（仅评论表单需要且当前为可评论的单篇文章时）。
 	 */
 	public function enqueue_front() {
+		if ( ! is_singular() || ! comments_open() ) {
+			return;
+		}
 		$config = $this->build_config( array( 'comment' ) );
 		if ( $config ) {
 			$this->enqueue_assets( $config );

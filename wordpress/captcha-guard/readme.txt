@@ -4,7 +4,7 @@ Tags: captcha, security, login, anti-spam, 验证码
 Requires at least: 5.8
 Tested up to: 6.5
 Requires PHP: 7.4
-Stable tag: 1.0.4
+Stable tag: 1.0.5
 License: MIT
 
 对接"动态验证码管理系统"（captcha_system），后台选择滑动/点选/文字验证方式，保护登录、注册、评论、找回密码表单。
@@ -46,6 +46,9 @@ License: MIT
 * API Key 与 PASS_TOKEN_SECRET 以明文保存在 `wp_options`，请确保站点文件与数据库权限安全
 
 == Changelog ==
+
+= 1.0.5 =
+* 修复：Ajax 评论主题（如 Argon）提交 403 —— 前端改为隐藏字段预注入 + 重放 submit 事件，兼容原生与 Ajax 表单
 
 = 1.0.4 =
 * 新增：PASS_TOKEN_SECRET 可留空——留空时插件调用服务端在线校验接口（服务端 v2.4.1+），普通用户无需密钥即可使用
