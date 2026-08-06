@@ -16,11 +16,11 @@ services:
       - PORT=8080
       - ENV=production
       # 以下凭据从 .env 读取（.env 不入库，修改后 docker compose up -d 生效）。
-      # 缺失时由应用层 ENV=production 的 fail-fast 校验拒绝启动，防止默认凭据上线
-      - SECRET_KEY=${SECRET_KEY}
+      # 未设置或为空时 compose 直接报错退出（fail-fast），防止空凭据/默认凭据上线
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY 未设置：请先 cp .env.example .env 并填写强随机值}
       - ADMIN_USER=${ADMIN_USER:-admin}
-      - ADMIN_PASS=${ADMIN_PASS}
-      - DEFAULT_API_KEY=${DEFAULT_API_KEY}
+      - ADMIN_PASS=${ADMIN_PASS:?ADMIN_PASS 未设置：请先在 .env 中填写}
+      - DEFAULT_API_KEY=${DEFAULT_API_KEY:?DEFAULT_API_KEY 未设置：请先在 .env 中填写}
       - RATE_LIMIT_GENERATE=30
       - CAPTCHA_EXPIRE=120
       # 可信代理 IP/CIDR（从 .env 读取，如 TRUSTED_PROXIES=127.0.0.1,192.168.1.0/24）。

@@ -89,6 +89,14 @@ class CaptchaHandler(BaseHTTPRequestHandler):
     def _json_error(self, msg, code=400):
         self._send(code, {"ok": False, "msg": msg})
 
+    def _internal_error(self, e):
+        """handler 未捕获异常的统一兜底：记录并返回 500 JSON，避免连接无响应断开。"""
+        print(f"[ERROR] {type(e).__name__}: {e}")
+        try:
+            self._send(500, {"ok": False, "msg": "服务器内部错误，请稍后重试"})
+        except Exception:
+            pass
+
     def _read_json(self):
         try:
             length = int(self.headers.get("Content-Length", 0))
@@ -216,6 +224,12 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         self._send(204)
 
     def do_GET(self):
+        try:
+            self._handle_get()
+        except Exception as e:
+            self._internal_error(e)
+
+    def _handle_get(self):
         path = self._path()
         if path in ("/", "/demo"):
             self._serve_demo()
@@ -265,6 +279,12 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             self._json_error("Not Found", 404)
 
     def do_POST(self):
+        try:
+            self._handle_post()
+        except Exception as e:
+            self._internal_error(e)
+
+    def _handle_post(self):
         path = self._path()
         routes = {
             "/api/v1/captcha/slider/generate": self._api_slider_generate,
@@ -298,6 +318,12 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         return bool(row and row["owner"] == me)
 
     def do_PUT(self):
+        try:
+            self._handle_put()
+        except Exception as e:
+            self._internal_error(e)
+
+    def _handle_put(self):
         path = self._path()
         m = re.match(r"^/api/v1/admin/keys/([^/]+)/(enable|disable)$", path)
         if m:
@@ -364,6 +390,12 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         self._json_error("Not Found", 404)
 
     def do_DELETE(self):
+        try:
+            self._handle_delete()
+        except Exception as e:
+            self._internal_error(e)
+
+    def _handle_delete(self):
         path = self._path()
         m = re.match(r"^/api/v1/admin/keys/([^/]+)$", path)
         if m:

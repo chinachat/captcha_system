@@ -41,13 +41,16 @@ def get_token(token_id):
             raw = r.get(f"captcha:{token_id}")
             if raw:
                 data = json.loads(raw)
+                # 过期时间由 Redis TTL 为准（setex 自动过期）
+                ttl = r.ttl(f"captcha:{token_id}")
+                expires_at = now() + max(int(ttl or 0), 0)
                 return {
                     "id": token_id,
                     "type": data["type"],
                     "secret": data["secret"],
                     "extra": json.dumps(data.get("extra") or {}),
                     "used": data.get("used", 0),
-                    "expires_at": now() + 10,
+                    "expires_at": expires_at,
                     "ip": data.get("ip", ""),
                 }
             return None
@@ -68,7 +71,7 @@ def mark_used(token_id):
             local raw = redis.call('get', key)
             if not raw then return 0 end
             local ttl = redis.call('ttl', key)
-            if ttl <= 0 then ttl = 120 end
+            if ttl <= 0 then return 1 end
             local data = cjson.decode(raw)
             data['used'] = 1
             redis.call('setex', key, ttl, cjson.encode(data))

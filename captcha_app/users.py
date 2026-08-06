@@ -116,6 +116,10 @@ def create_user(username: str, password: str, group_id) -> tuple:
     conn = get_db()
     if conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
         return False, "用户名已存在", None
+    if group_id is not None:
+        g = conn.execute("SELECT 1 FROM user_groups WHERE id = ?", (group_id,)).fetchone()
+        if not g:
+            return False, "用户组不存在", None
     cur = conn.execute(
         "INSERT INTO users (username, password_hash, group_id, enabled, created_at) VALUES (?, ?, ?, 1, ?)",
         (username, hash_password(password), group_id, now()),

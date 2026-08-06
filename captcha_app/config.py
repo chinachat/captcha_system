@@ -57,19 +57,26 @@ REDIS_URL = os.environ.get("REDIS_URL", "")
 # 例如: "192.168.1.0/24,10.0.0.1" 或 "127.0.0.1"
 TRUSTED_PROXIES = os.environ.get("TRUSTED_PROXIES", "")
 
+def _cred_insecure(v, bad_default):
+    """凭据不安全判定：未设置/空白，或等于已知默认值。"""
+    return not (v and str(v).strip()) or v == bad_default
+
+
 INSECURE_DEFAULTS = {
-    "ADMIN_PASS": ADMIN_PASS == "admin123",
-    "DEFAULT_API_KEY": DEFAULT_API_KEY == "demo-api-key-captcha-2026",
-    "SECRET_KEY": SECRET_KEY.startswith("change-me-in-production-"),
+    # ADMIN_USER 仅校验非空（"admin" 默认名配强密码可接受，不强制改名）
+    "ADMIN_USER": not (ADMIN_USER and str(ADMIN_USER).strip()),
+    "ADMIN_PASS": _cred_insecure(ADMIN_PASS, "admin123"),
+    "DEFAULT_API_KEY": _cred_insecure(DEFAULT_API_KEY, "demo-api-key-captcha-2026"),
+    "SECRET_KEY": SECRET_KEY.startswith("change-me-in-production-") or not str(SECRET_KEY or "").strip(),
 }
 
 
 def validate_config():
-    """凭据校验：production 环境使用默认/占位凭据时拒绝启动（fail-fast）。"""
+    """凭据校验：production 环境使用默认/占位/空凭据时拒绝启动（fail-fast）。"""
     insecure = [k for k, v in INSECURE_DEFAULTS.items() if v]
     if not insecure:
         return
-    msg = ("检测到不安全默认配置: " + ", ".join(insecure) +
+    msg = ("检测到不安全配置（未设置或为默认值）: " + ", ".join(insecure) +
            "。请通过环境变量设置强随机值（SECRET_KEY 可用 `openssl rand -hex 32` 生成）。")
     if config_is_production() and not ALLOW_INSECURE_DEFAULTS:
         print("[FATAL] " + msg, file=sys.stderr)

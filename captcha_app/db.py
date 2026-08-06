@@ -13,6 +13,9 @@ def get_db():
     if conn is None:
         conn = sqlite3.connect(config.DB_PATH, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        # autocommit：语句级原子。防止异常（如 FK 违规）后遗留未提交事务，
+        # 其连接被异常 traceback 引用、GC 前不释放写锁，导致全库写操作卡死
+        conn.isolation_level = None
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("PRAGMA synchronous=NORMAL")
@@ -25,6 +28,7 @@ def get_db():
 def init_db():
     conn = sqlite3.connect(config.DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.isolation_level = None
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA synchronous=NORMAL")

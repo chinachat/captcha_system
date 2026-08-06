@@ -203,7 +203,7 @@ POST /api/v1/captcha/validate
 
 ## WordPress 插件接入
 
-仓库内置 `wordpress/captcha-guard/`（安装包 `captcha-guard-1.0.4.zip`）：后台选择验证方式，保护登录/注册/评论/找回密码表单。
+仓库内置 `wordpress/captcha-guard/`（安装包 `captcha-guard-1.0.10.zip`）：后台选择验证方式，保护登录/注册/评论/找回密码表单。
 
 **配置**：
 1. 服务端后台 → API Key 卡片 → "复制插件配置"（服务地址 / API Key / PASS_TOKEN_SECRET）
@@ -244,6 +244,7 @@ POST /api/v1/captcha/validate
 6. 业务方校验 pass_token：本地验签需保管密钥；无密钥场景使用在线校验接口
 7. 普通用户按组分配配额；删除离职用户会级联删除其 Key
 8. 中文字体：Docker 镜像已内置 Noto CJK；裸机安装 `fonts-noto-cjk` 或放入 `fonts/`
+9. 多个 WordPress 站共用同一验证码服务时，插件 `PASS_TOKEN_SECRET` 建议留空使用**在线校验模式**（服务端原子消费 jti）；本地验签模式的 jti 一次性消费按站点独立记录，共用密钥时 pass_token 存在 60 秒窗口内跨站重放的可能
 
 ---
 

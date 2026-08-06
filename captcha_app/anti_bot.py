@@ -1,10 +1,12 @@
-"""抗自动化：轨迹/时序分析与失败锁定"""
+"""抗自动化：轨迹/时序分析与失败锁定（Redis 共享 / 内存兜底）"""
 import random
 from collections import defaultdict
 
 from . import config
+from .redis_client import get_redis
 from .utils import now
 
+# 内存兜底（无 Redis 时使用；Redis 模式下计数器与锁均存 Redis，多实例共享）
 _fail_counter = defaultdict(int)
 _fail_lock_until = {}
 
@@ -13,8 +15,34 @@ def _client_key(ip, api_key=""):
     return f"{ip}|{(api_key or '')[:16]}"
 
 
+# ---------- Redis 共享锁定 ----------
+# 计数器键：failc:{k}（TTL 窗口内滑动衰减）；锁键：faill:{k}（EX 过期即解锁）
+# 登录锁定使用独立前缀（loginl:/loginc:），与业务锁定互不影响。
+
+def _rcnt_key(k, login=False):
+    return f"loginc:{k}" if login else f"failc:{k}"
+
+
+def _rlock_key(k, login=False):
+    return f"loginl:{k}" if login else f"faill:{k}"
+
+
+def _redis_locked(r, k, login=False) -> tuple:
+    """Redis 锁定查询，返回 (locked, remaining_seconds)。"""
+    try:
+        ttl = r.ttl(_rlock_key(k, login))
+        if ttl == -2:  # 键不存在
+            return False, 0
+        if ttl == -1:  # 异常的无 TTL 键，清理
+            r.delete(_rlock_key(k, login))
+            return False, 0
+        return True, ttl + 1
+    except Exception:
+        return False, 0
+
+
 def _cleanup_expired():
-    """清理已过期的锁定记录和计数器，防止内存无限增长。"""
+    """清理内存模式下已过期的锁定记录和计数器，防止内存无限增长。"""
     now_t = now()
     expired = [k for k, v in _fail_lock_until.items() if v < now_t]
     for k in expired:
@@ -34,6 +62,13 @@ def is_locked(ip, api_key="") -> tuple:
         _cleanup_expired()
 
     k = _client_key(ip, api_key)
+    r = get_redis()
+    if r:
+        locked, remain = _redis_locked(r, k)
+        if locked:
+            return True, remain
+        return False, 0
+
     until = _fail_lock_until.get(k, 0)
     if until > now_t:
         return True, int(until - now_t) + 1
@@ -46,6 +81,19 @@ def is_locked(ip, api_key="") -> tuple:
 
 def record_fail(ip, api_key=""):
     k = _client_key(ip, api_key)
+    r = get_redis()
+    if r:
+        try:
+            ck = _rcnt_key(k)
+            cnt = r.incr(ck)
+            if cnt == 1:
+                r.expire(ck, config.FAIL_LOCK_SECONDS + 60)
+            if cnt >= config.FAIL_LOCK_THRESHOLD:
+                r.set(_rlock_key(k), "1", ex=config.FAIL_LOCK_SECONDS)
+                r.delete(ck)
+            return
+        except Exception:
+            pass
     _fail_counter[k] += 1
     if _fail_counter[k] >= config.FAIL_LOCK_THRESHOLD:
         _fail_lock_until[k] = now() + config.FAIL_LOCK_SECONDS
@@ -54,6 +102,13 @@ def record_fail(ip, api_key=""):
 
 def record_success(ip, api_key=""):
     k = _client_key(ip, api_key)
+    r = get_redis()
+    if r:
+        try:
+            r.delete(_rcnt_key(k), _rlock_key(k))
+            return
+        except Exception:
+            pass
     _fail_counter[k] = 0
     _fail_lock_until.pop(k, None)
 
@@ -66,6 +121,13 @@ def login_locked(ip) -> tuple:
     """管理登录失败锁定，返回 (locked, remaining_seconds)"""
     now_t = now()
     k = _login_key(ip)
+    r = get_redis()
+    if r:
+        locked, remain = _redis_locked(r, k, login=True)
+        if locked:
+            return True, remain
+        return False, 0
+
     until = _fail_lock_until.get(k, 0)
     if until > now_t:
         return True, int(until - now_t) + 1
@@ -77,6 +139,19 @@ def login_locked(ip) -> tuple:
 
 def record_login_fail(ip):
     k = _login_key(ip)
+    r = get_redis()
+    if r:
+        try:
+            ck = _rcnt_key(k, login=True)
+            cnt = r.incr(ck)
+            if cnt == 1:
+                r.expire(ck, config.LOGIN_LOCK_SECONDS + 60)
+            if cnt >= config.LOGIN_LOCK_THRESHOLD:
+                r.set(_rlock_key(k, login=True), "1", ex=config.LOGIN_LOCK_SECONDS)
+                r.delete(ck)
+            return
+        except Exception:
+            pass
     _fail_counter[k] += 1
     if _fail_counter[k] >= config.LOGIN_LOCK_THRESHOLD:
         _fail_lock_until[k] = now() + config.LOGIN_LOCK_SECONDS
@@ -85,6 +160,13 @@ def record_login_fail(ip):
 
 def record_login_success(ip):
     k = _login_key(ip)
+    r = get_redis()
+    if r:
+        try:
+            r.delete(_rcnt_key(k, login=True), _rlock_key(k, login=True))
+            return
+        except Exception:
+            pass
     _fail_counter.pop(k, None)
     _fail_lock_until.pop(k, None)
 
