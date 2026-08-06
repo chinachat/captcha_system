@@ -85,6 +85,10 @@ def init_db():
         jti         TEXT PRIMARY KEY,
         created_at  REAL NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS settings (
+        key         TEXT PRIMARY KEY,
+        value       TEXT NOT NULL DEFAULT ''
+    );
     CREATE INDEX IF NOT EXISTS idx_tokens_expires ON captcha_tokens(expires_at);
     CREATE INDEX IF NOT EXISTS idx_logs_created ON captcha_logs(created_at);
     CREATE INDEX IF NOT EXISTS idx_logs_type ON captcha_logs(type);
@@ -96,6 +100,9 @@ def init_db():
     key_cols = [r[1] for r in conn.execute("PRAGMA table_info(api_keys)")]
     if "owner" not in key_cols:
         conn.execute("ALTER TABLE api_keys ADD COLUMN owner TEXT DEFAULT 'admin'")
+    user_cols = [r[1] for r in conn.execute("PRAGMA table_info(users)")]
+    if "totp_secret" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN totp_secret TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_logs_api_key ON captcha_logs(api_key)")
     cur.execute("SELECT COUNT(*) FROM api_keys WHERE key = ?", (config.DEFAULT_API_KEY,))
     if cur.fetchone()[0] == 0:

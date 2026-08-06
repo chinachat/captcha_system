@@ -11,6 +11,9 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 from . import config
+from . import settings
+from . import totp
+from . import twofa
 from . import users
 from .anti_bot import (
     analyze_click_timing,
@@ -53,10 +56,23 @@ from .users import (
 )
 from .utils import b64_image, create_jwt, decode_jwt, now
 
+# 模板内容缓存：path -> (mtime, content)，开发时改模板即失效
+_TEMPLATE_CACHE = {}
+
 
 class CaptchaHandler(BaseHTTPRequestHandler):
     server_version = "CaptchaServer/2.1"
     timeout = config.REQUEST_TIMEOUT
+    # HTTP/1.1 keep-alive：复用连接，减少握手与线程创建开销（空闲由 timeout 兜底断开）
+    protocol_version = "HTTP/1.1"
+    # 单连接最大请求数：防长连接长期占满并发槽位
+    _MAX_REQUESTS_PER_CONN = 100
+
+    def handle_one_request(self):
+        self._req_count = getattr(self, "_req_count", 0) + 1
+        if self._req_count > self._MAX_REQUESTS_PER_CONN:
+            self.close_connection = True
+        super().handle_one_request()
 
     def log_message(self, fmt, *args):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {self.address_string()} {fmt % args}")
@@ -254,6 +270,8 @@ class CaptchaHandler(BaseHTTPRequestHandler):
                 # 页面 Key 卡片数据源是 stats，需同步附加插件连接配置
                 for k in data.get("api_keys", []):
                     k["connect"] = self._key_connect_info(k["key"], include_secret=auth.get("role") == "admin")
+                # 当前登录账号的二次验证状态（安全设置卡片数据源）
+                data["twofa_enabled"] = twofa.is_enabled(auth.get("user", config.ADMIN_USER))
                 self._send(200, {"ok": True, "data": data})
         elif path == "/api/v1/admin/keys":
             if self._require_auth():
@@ -271,6 +289,11 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         elif path == "/api/v1/admin/groups":
             if self._require_admin():
                 self._send(200, {"ok": True, "data": list_groups()})
+        elif path == "/api/v1/admin/settings":
+            if self._require_admin():
+                self._send(200, {"ok": True, "data": {
+                    "registration_enabled": settings.get_bool_setting("registration_enabled", False),
+                }})
         elif path == "/api/v1/docs":
             self._serve_api_docs()
         elif path.startswith("/static/"):
@@ -287,6 +310,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
     def _handle_post(self):
         path = self._path()
         routes = {
+            "/api/v1/register": self._api_register,
             "/api/v1/captcha/slider/generate": self._api_slider_generate,
             "/api/v1/captcha/slider/verify": self._api_slider_verify,
             "/api/v1/captcha/text/generate": self._api_text_generate,
@@ -296,6 +320,9 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             "/api/v1/captcha/test": self._api_captcha_test,
             "/api/v1/captcha/validate": self._api_captcha_validate,
             "/api/v1/admin/login": self._api_admin_login,
+            "/api/v1/admin/login/2fa": self._api_login_2fa,
+            "/api/v1/admin/2fa/setup": self._api_2fa_setup,
+            "/api/v1/admin/2fa/confirm": self._api_2fa_confirm,
             "/api/v1/admin/logout": lambda: self._send(200, {"ok": True}),
             "/api/v1/admin/captcha/generate": self._api_login_captcha_generate,
             "/api/v1/admin/keys": self._api_create_key,
@@ -325,6 +352,17 @@ class CaptchaHandler(BaseHTTPRequestHandler):
 
     def _handle_put(self):
         path = self._path()
+        # 系统设置（管理员）
+        if path == "/api/v1/admin/settings":
+            if not self._require_admin():
+                return
+            body = self._read_json()
+            if body is None:
+                return
+            settings.set_setting("registration_enabled",
+                                 "1" if body.get("registration_enabled") else "0")
+            self._send(200, {"ok": True, "msg": "已更新"})
+            return
         m = re.match(r"^/api/v1/admin/keys/([^/]+)/(enable|disable)$", path)
         if m:
             if not self._require_auth():
@@ -397,6 +435,22 @@ class CaptchaHandler(BaseHTTPRequestHandler):
 
     def _handle_delete(self):
         path = self._path()
+        # 解绑当前账号二次验证（需当前 TOTP 码，防会话劫持后直接关闭）
+        if path == "/api/v1/admin/2fa":
+            self._api_2fa_disable()
+            return
+        # 管理员重置指定用户的二次验证
+        m = re.match(r"^/api/v1/admin/users/([^/]+)/2fa$", path)
+        if m:
+            if not self._require_admin():
+                return
+            username = m.group(1)
+            if username == config.ADMIN_USER:
+                self._json_error("内置管理员请在自身安全设置中操作", 400)
+                return
+            twofa.clear_secret(username)
+            self._send(200, {"ok": True, "msg": "已重置该用户的二次验证"})
+            return
         m = re.match(r"^/api/v1/admin/keys/([^/]+)$", path)
         if m:
             if not self._require_auth():
@@ -779,28 +833,165 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         username = str(body.get("username") or "")
         password = str(body.get("password") or "")
 
+        account, role, user = None, "", None
         # 内置管理员
         if hmac.compare_digest(username.encode("utf-8"), config.ADMIN_USER.encode("utf-8")) and \
            hmac.compare_digest(password.encode("utf-8"), config.ADMIN_PASS.encode("utf-8")):
-            record_login_success(ip)
-            token = create_jwt({"role": "admin", "user": config.ADMIN_USER})
-            self._send_login_ok(token, config.ADMIN_USER, "admin")
+            account, role = config.ADMIN_USER, "admin"
+        else:
+            # 普通用户（用户组体系）
+            user = users.authenticate_user(username, password)
+            if user:
+                account, role = user["username"], "user"
+
+        if account is None:
+            record_login_fail(ip)
+            self._json_error("用户名或密码错误", 401)
             return
 
-        # 普通用户（用户组体系）
-        user = users.authenticate_user(username, password)
-        if user:
-            record_login_success(ip)
-            token = create_jwt({
-                "role": "user",
-                "user": user["username"],
-                "group_id": user["group_id"],
-            })
-            self._send_login_ok(token, user["username"], "user")
+        # 二次验证（TOTP）：已启用则先发短期 pre_token，验证通过后再发正式 JWT
+        if twofa.is_enabled(account):
+            claims = {"role": role, "user": account, "step": "2fa", "jti": str(uuid.uuid4())}
+            if user and user.get("group_id") is not None:
+                claims["group_id"] = user["group_id"]
+            pre_token = create_jwt(claims, expires_seconds=300)
+            self._send(200, {"ok": False, "need_2fa": True, "pre_token": pre_token,
+                             "msg": "请输入二次验证码"})
             return
 
-        record_login_fail(ip)
-        self._json_error("用户名或密码错误", 401)
+        record_login_success(ip)
+        claims = {"role": role, "user": account}
+        if user and user.get("group_id") is not None:
+            claims["group_id"] = user["group_id"]
+        token = create_jwt(claims)
+        self._send_login_ok(token, account, role)
+
+    def _api_login_2fa(self):
+        """二次验证第二步：pre_token + TOTP 码 → 正式 JWT。"""
+        body = self._read_json()
+        if body is None:
+            return
+        ip = self._client_ip()
+        locked, remain = login_locked(ip)
+        if locked:
+            self._send(429, {
+                "ok": False,
+                "msg": f"失败次数过多，请 {remain} 秒后再试",
+                "retry_after": remain,
+            }, headers={"Retry-After": str(remain)})
+            return
+        pre_token = body.get("pre_token")
+        code = (body.get("code") or "").strip()
+        payload = decode_jwt(pre_token) if pre_token else None
+        if not payload or payload.get("step") != "2fa":
+            self._json_error("会话已失效，请重新登录", 401)
+            return
+        # pre_token 一次性消费：仅在 TOTP 校验通过后消费，输错动态码可重试不失效
+        account = payload.get("user")
+        if twofa.verify(account, code):
+            jti = str(payload.get("jti") or "")
+            if jti and not consume_pass_jti(jti, ttl=300):
+                self._json_error("会话已使用，请重新登录", 401)
+                return
+            record_login_success(ip)
+            claims = {"role": payload.get("role", "user"), "user": account}
+            if payload.get("group_id") is not None:
+                claims["group_id"] = payload["group_id"]
+            token = create_jwt(claims)
+            self._send_login_ok(token, account, claims["role"])
+        else:
+            record_login_fail(ip)
+            self._send(200, {"ok": False, "msg": "二次验证码不正确，请重试"})
+
+    def _api_register(self):
+        """用户注册：管理面板开关控制；需验证码 + IP 限流防滥用。"""
+        if not settings.get_bool_setting("registration_enabled", False):
+            self._json_error("注册未开放", 403)
+            return
+        ip = self._client_ip()
+        allowed, _, reset_in = check_rate_limit(ip, "register")
+        if not allowed:
+            self._send(429, {
+                "ok": False,
+                "msg": f"注册过于频繁，请 {reset_in} 秒后再试",
+                "retry_after": reset_in,
+            }, headers={"Retry-After": str(reset_in)})
+            return
+        body = self._read_json()
+        if body is None:
+            return
+        # 注册验证码（复用登录验证码机制，防脚本批量注册）
+        if config.LOGIN_CAPTCHA:
+            captcha_ok = self._check_login_captcha(body)
+            if captcha_ok is not True:
+                self._send(captcha_ok or 400, {"ok": False, "msg": "验证码错误或已过期"})
+                return
+        username = str(body.get("username") or "").strip()
+        password = str(body.get("password") or "")
+        # 用户名不能与内置管理员冲突
+        if hmac.compare_digest(username.encode("utf-8"), config.ADMIN_USER.encode("utf-8")):
+            self._json_error("用户名不可用", 400)
+            return
+        ok, msg, _ = create_user(username, password, ensure_default_group())
+        if not ok:
+            self._json_error(msg, 400)
+            return
+        self._send(200, {"ok": True, "msg": "注册成功，请登录"})
+
+    def _api_2fa_setup(self):
+        """生成 TOTP 密钥（暂不落库，confirm 通过后才启用）。"""
+        auth = self._require_auth()
+        if not auth:
+            return
+        account = auth.get("user", config.ADMIN_USER)
+        secret = totp.generate_secret()
+        self._send(200, {"ok": True, "data": {
+            "account": account,
+            "secret": secret,
+            "uri": totp.otpauth_uri(secret, account),
+        }})
+
+    def _api_2fa_confirm(self):
+        """确认启用：用提交的密钥校验当前 TOTP 码，通过后写入持久化。"""
+        auth = self._require_auth()
+        if not auth:
+            return
+        body = self._read_json()
+        if body is None:
+            return
+        account = auth.get("user", config.ADMIN_USER)
+        secret = (body.get("secret") or "").strip()
+        code = (body.get("code") or "").strip()
+        if not secret or not code:
+            self._json_error("缺少密钥或验证码")
+            return
+        if twofa.is_enabled(account):
+            self._json_error("已启用二次验证，请先解绑再重新绑定", 400)
+            return
+        if not totp.verify_code(secret, code):
+            self._json_error("验证码不正确，请重试", 400)
+            return
+        twofa.set_secret(account, secret)
+        self._send(200, {"ok": True, "msg": "二次验证已启用"})
+
+    def _api_2fa_disable(self):
+        """解绑当前账号二次验证（需当前 TOTP 码，防会话劫持后直接关闭）。"""
+        auth = self._require_auth()
+        if not auth:
+            return
+        body = self._read_json()
+        if body is None:
+            return
+        account = auth.get("user", config.ADMIN_USER)
+        code = (body.get("code") or "").strip()
+        if not twofa.is_enabled(account):
+            self._json_error("未启用二次验证", 400)
+            return
+        if not twofa.verify(account, code):
+            self._json_error("验证码不正确", 400)
+            return
+        twofa.clear_secret(account)
+        self._send(200, {"ok": True, "msg": "二次验证已关闭"})
 
     def _check_login_captcha(self, body):
         """校验登录验证码：返回 True 或 HTTP 状态码。"""
@@ -911,8 +1102,17 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         if not os.path.exists(path):
             self._send(200, f"<h1>{filename} missing</h1>", "text/html")
             return
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            mtime = 0.0
+        hit = _TEMPLATE_CACHE.get(path)
+        if hit and hit[0] == mtime:
+            content = hit[1]
+        else:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            _TEMPLATE_CACHE[path] = (mtime, content)
         if replace_key:
             # 页面注入受限的演示 Key（与业务 Key 隔离；页面源码可见但不展示）
             content = content.replace("{{API_KEY}}", get_demo_key())

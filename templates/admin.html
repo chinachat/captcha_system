@@ -156,13 +156,36 @@
   <div class="login-wrap" id="loginView">
     <div class="login-box">
       <h2>验证码管理仪表盘</h2>
-      <input type="text" id="username" placeholder="用户名" value="admin">
-      <input type="password" id="password" placeholder="密码" value="">
-      <div id="loginCaptchaRow" style="display:none;align-items:center;gap:8px">
-        <img id="loginCaptchaImg" alt="验证码" title="点击刷新验证码" style="height:44px;border-radius:6px;cursor:pointer;border:1px solid var(--border)">
-        <input type="text" id="loginCaptchaCode" placeholder="验证码" maxlength="8" autocomplete="off">
+      <!-- 登录 -->
+      <div id="loginForm">
+        <input type="text" id="username" placeholder="用户名" value="admin">
+        <input type="password" id="password" placeholder="密码" value="">
+        <div id="loginCaptchaRow" style="display:none;align-items:center;gap:8px">
+          <img id="loginCaptchaImg" alt="验证码" title="点击刷新验证码" style="height:44px;border-radius:6px;cursor:pointer;border:1px solid var(--border)">
+          <input type="text" id="loginCaptchaCode" placeholder="验证码" maxlength="8" autocomplete="off">
+        </div>
+        <button onclick="doLogin()">登录</button>
+        <p style="text-align:center;margin-top:14px;font-size:13px"><a href="javascript:showReg()">注册账号</a></p>
       </div>
-      <button onclick="doLogin()">登录</button>
+      <!-- 注册（管理面板开启后可用） -->
+      <div id="regForm" style="display:none">
+        <input type="text" id="regUsername" placeholder="用户名" maxlength="32">
+        <input type="password" id="regPassword" placeholder="密码">
+        <input type="password" id="regPassword2" placeholder="确认密码">
+        <div id="regCaptchaRow" style="display:none;align-items:center;gap:8px">
+          <img id="regCaptchaImg" alt="验证码" title="点击刷新验证码" style="height:44px;border-radius:6px;cursor:pointer;border:1px solid var(--border)">
+          <input type="text" id="regCaptchaCode" placeholder="验证码" maxlength="8" autocomplete="off">
+        </div>
+        <button onclick="doRegister()">注册</button>
+        <p style="text-align:center;margin-top:14px;font-size:13px"><a href="javascript:showLogin()">返回登录</a></p>
+      </div>
+      <!-- 二次验证（登录第二步） -->
+      <div id="twofaForm" style="display:none">
+        <p style="text-align:center;font-size:14px;margin-bottom:16px;color:var(--muted)">该账号已开启二次验证，请输入动态验证码</p>
+        <input type="text" id="twofaCode" placeholder="6 位动态验证码" maxlength="6" autocomplete="off" style="text-align:center;font-size:18px;letter-spacing:4px">
+        <button onclick="submit2fa()">验证</button>
+        <p style="text-align:center;margin-top:14px;font-size:13px"><a href="javascript:backToLogin()">返回重新登录</a></p>
+      </div>
       <div class="err" id="loginErr"></div>
     </div>
   </div>
@@ -196,7 +219,7 @@
             </div>
             <div style="overflow-x:auto;max-height:320px">
               <table>
-                <thead><tr><th>用户名</th><th>用户组</th><th>Key 数/配额</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead>
+                <thead><tr><th>用户名</th><th>用户组</th><th>Key 数/配额</th><th>2FA</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead>
                 <tbody id="userBody"></tbody>
               </table>
             </div>
@@ -215,6 +238,36 @@
                 <tbody id="groupBody"></tbody>
               </table>
             </div>
+          </div>
+        </div>
+        <div class="panel" style="margin-bottom:14px">
+          <h3>系统设置</h3>
+          <label style="font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="regEnabled" onchange="saveSettings()"> 开放用户注册（注册用户归属默认组、普通用户权限，注册需图片验证码 + IP 限流）
+          </label>
+        </div>
+      </div>
+
+      <div class="panel" id="secPanel" style="margin-bottom:14px;display:none">
+        <h3>安全设置 · 二次验证（TOTP）</h3>
+        <div id="twofaStatus"></div>
+        <div id="twofaBind" style="display:none;margin-top:10px">
+          <p style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.7">
+            使用 Google Authenticator / Microsoft Authenticator 等应用添加：<br>
+            ① 应用内选择「手动输入密钥」，输入下方密钥；<br>
+            ② 或在支持导入链接的应用中粘贴下方 otpauth URI；<br>
+            ③ 输入应用生成的 6 位动态码完成绑定。
+          </p>
+          <code class="cg-cfg" id="twofaSecret"></code>
+          <div class="form-row" style="margin-top:8px">
+            <input id="twofaConfirmCode" placeholder="6 位动态验证码" maxlength="6" autocomplete="off" style="max-width:180px">
+            <button class="btn btn-sm" onclick="confirm2fa()">确认绑定</button>
+          </div>
+        </div>
+        <div id="twofaUnbind" style="display:none;margin-top:10px">
+          <div class="form-row">
+            <input id="twofaDisableCode" placeholder="当前 6 位动态码（解绑需验证）" maxlength="6" autocomplete="off" style="max-width:220px">
+            <button class="btn btn-sm btn-danger" onclick="disable2fa()">解绑</button>
           </div>
         </div>
       </div>
@@ -315,6 +368,9 @@ let currentRole = "admin";
 let currentUser = "";
 let timer = null;
 let loginCaptchaToken = "";
+let regCaptchaToken = "";
+let preToken = "";
+let twofaSetup = null;
 let usersCache = [];
 let groupsCache = [];
 let showEditRow = false;
@@ -346,6 +402,95 @@ async function loadLoginCaptcha() {
 }
 document.getElementById("loginCaptchaImg").addEventListener("click", loadLoginCaptcha);
 
+/* 注册验证码：与登录验证码独立 token */
+async function loadRegCaptcha() {
+  const row = document.getElementById("regCaptchaRow");
+  try {
+    const res = await fetch("/api/v1/admin/captcha/generate", { method: "POST" });
+    if (!res.ok) throw new Error("http " + res.status);
+    const json = await res.json();
+    if (!json.ok || !json.data) throw new Error("no data");
+    regCaptchaToken = json.data.token;
+    document.getElementById("regCaptchaImg").src = json.data.image;
+    document.getElementById("regCaptchaCode").value = "";
+    row.style.display = "flex";
+  } catch (e) {
+    regCaptchaToken = "";
+    row.style.display = "none";
+  }
+}
+document.getElementById("regCaptchaImg").addEventListener("click", loadRegCaptcha);
+
+function showReg() {
+  document.getElementById("loginForm").style.display = "none";
+  document.getElementById("twofaForm").style.display = "none";
+  document.getElementById("regForm").style.display = "block";
+  document.getElementById("loginErr").style.display = "none";
+  loadRegCaptcha();
+}
+function showLogin() {
+  document.getElementById("regForm").style.display = "none";
+  document.getElementById("twofaForm").style.display = "none";
+  document.getElementById("loginForm").style.display = "block";
+  document.getElementById("loginErr").style.display = "none";
+  loadLoginCaptcha();
+}
+function backToLogin() {
+  document.getElementById("twofaForm").style.display = "none";
+  document.getElementById("loginForm").style.display = "block";
+  document.getElementById("loginErr").style.display = "none";
+  loadLoginCaptcha();
+}
+
+async function doRegister() {
+  const err = document.getElementById("loginErr");
+  const username = document.getElementById("regUsername").value.trim();
+  const password = document.getElementById("regPassword").value;
+  const password2 = document.getElementById("regPassword2").value;
+  if (!username || !password) {
+    err.style.display = "block"; err.style.color = ""; err.textContent = "用户名与密码不能为空"; return;
+  }
+  if (password !== password2) {
+    err.style.display = "block"; err.style.color = ""; err.textContent = "两次输入的密码不一致"; return;
+  }
+  err.style.display = "none";
+  const body = { username, password };
+  if (regCaptchaToken) {
+    body.captcha_token = regCaptchaToken;
+    body.captcha_code = document.getElementById("regCaptchaCode").value.trim();
+  }
+  try {
+    const res = await fetch("/api/v1/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const json = await res.json();
+    if (json.ok) {
+      err.style.display = "block"; err.style.color = "var(--ok)";
+      err.textContent = json.msg || "注册成功";
+      showLogin();
+    } else {
+      err.style.display = "block"; err.style.color = "";
+      err.textContent = json.msg || "注册失败";
+      loadRegCaptcha();
+    }
+  } catch (e) {
+    err.style.display = "block"; err.style.color = "";
+    err.textContent = "网络错误：" + e.message;
+  }
+}
+
+function finishLogin(json) {
+  adminToken = json.token;
+  currentRole = json.role || "admin";
+  currentUser = json.user || "";
+  localStorage.setItem("admin_token", adminToken);
+  localStorage.setItem("cg_role", currentRole);
+  localStorage.setItem("cg_user", currentUser);
+  showDash();
+}
+
 async function doLogin() {
   const err = document.getElementById("loginErr");
   err.style.display = "none";
@@ -360,18 +505,41 @@ async function doLogin() {
     }
     const json = await api("/api/v1/admin/login", { method: "POST", body: JSON.stringify(body) });
     if (!json.ok) {
+      if (json.need_2fa) {
+        preToken = json.pre_token;
+        document.getElementById("loginForm").style.display = "none";
+        document.getElementById("twofaForm").style.display = "block";
+        document.getElementById("twofaCode").value = "";
+        return;
+      }
       loadLoginCaptcha();
       err.style.display = "block"; err.textContent = json.msg || "登录失败"; return;
     }
-    adminToken = json.token;
-    currentRole = json.role || "admin";
-    currentUser = json.user || "";
-    localStorage.setItem("admin_token", adminToken);
-    localStorage.setItem("cg_role", currentRole);
-    localStorage.setItem("cg_user", currentUser);
-    showDash();
+    finishLogin(json);
   } catch (e) {
     loadLoginCaptcha();
+    err.style.display = "block"; err.textContent = e.message;
+  }
+}
+
+/* 二次验证第二步：pre_token + 动态码 */
+async function submit2fa() {
+  const err = document.getElementById("loginErr");
+  const code = document.getElementById("twofaCode").value.trim();
+  if (!code) {
+    err.style.display = "block"; err.textContent = "请输入动态验证码"; return;
+  }
+  err.style.display = "none";
+  try {
+    const json = await api("/api/v1/admin/login/2fa", {
+      method: "POST",
+      body: JSON.stringify({ pre_token: preToken, code })
+    });
+    if (!json.ok) {
+      err.style.display = "block"; err.textContent = json.msg || "验证失败，请重试"; return;
+    }
+    finishLogin(json);
+  } catch (e) {
     err.style.display = "block"; err.textContent = e.message;
   }
 }
@@ -395,9 +563,83 @@ function showDash() {
   document.getElementById("adminPanels").style.display = currentRole === "admin" ? "block" : "none";
   document.getElementById("newKeyOwnerRow").style.display = currentRole === "admin" ? "flex" : "none";
   loadStats();
-  if (currentRole === "admin") { loadUsers(); loadGroups(); }
+  if (currentRole === "admin") { loadUsers(); loadGroups(); loadSettings(); }
   if (timer) clearInterval(timer);
   timer = setInterval(loadStats, 15000);
+}
+
+/* 系统设置：开放注册开关（管理员） */
+async function loadSettings() {
+  try {
+    const json = await api("/api/v1/admin/settings");
+    if (!json.ok) return;
+    document.getElementById("regEnabled").checked = !!(json.data && json.data.registration_enabled);
+  } catch (e) { console.error(e); }
+}
+async function saveSettings() {
+  const on = document.getElementById("regEnabled").checked;
+  try {
+    const json = await api("/api/v1/admin/settings", {
+      method: "PUT",
+      body: JSON.stringify({ registration_enabled: on })
+    });
+    if (!json.ok) alert(json.msg || "保存失败");
+  } catch (e) { console.error(e); }
+}
+
+/* ===== 二次验证（TOTP）===== */
+function refreshSecPanel() {
+  const sec = document.getElementById("secPanel");
+  if (!sec) return;
+  sec.style.display = "block";
+  const enabled = !!(window.__cg_stats && window.__cg_stats.twofa_enabled);
+  document.getElementById("twofaStatus").innerHTML = enabled
+    ? '<span class="pill pill-on">已启用</span> <span style="font-size:12px;color:var(--muted);margin-left:6px">' + esc(currentUser) + '</span>'
+    : '<span class="pill pill-off">未启用</span> <span style="font-size:12px;color:var(--muted);margin-left:6px">' + esc(currentUser) + '</span> ' +
+      '<button class="btn btn-sm" onclick="setup2fa()" style="margin-left:10px">绑定</button>';
+  document.getElementById("twofaBind").style.display = "none";
+  document.getElementById("twofaUnbind").style.display = enabled ? "block" : "none";
+}
+async function setup2fa() {
+  try {
+    const json = await api("/api/v1/admin/2fa/setup", { method: "POST", body: "{}" });
+    if (!json.ok) { alert(json.msg || "操作失败"); return; }
+    twofaSetup = json.data;
+    document.getElementById("twofaBind").style.display = "block";
+    document.getElementById("twofaUnbind").style.display = "none";
+    document.getElementById("twofaSecret").textContent =
+      "密钥: " + twofaSetup.secret + "\notpauth URI: " + twofaSetup.uri;
+    document.getElementById("twofaConfirmCode").value = "";
+  } catch (e) { alert("请求失败：" + e.message); }
+}
+async function confirm2fa() {
+  const code = document.getElementById("twofaConfirmCode").value.trim();
+  if (!code || !twofaSetup) return;
+  try {
+    const json = await api("/api/v1/admin/2fa/confirm", {
+      method: "POST",
+      body: JSON.stringify({ secret: twofaSetup.secret, code })
+    });
+    if (json.ok) { alert("二次验证已启用"); twofaSetup = null; refreshSecPanel(); }
+    else alert(json.msg || "绑定失败");
+  } catch (e) { alert("请求失败：" + e.message); }
+}
+async function disable2fa() {
+  const code = document.getElementById("twofaDisableCode").value.trim();
+  if (!code) return;
+  try {
+    const json = await api("/api/v1/admin/2fa", { method: "DELETE", body: JSON.stringify({ code }) });
+    if (json.ok) { alert("二次验证已关闭"); refreshSecPanel(); }
+    else alert(json.msg || "操作失败");
+  } catch (e) { alert("请求失败：" + e.message); }
+}
+async function resetUser2fa(username) {
+  if (!confirm("确定重置 " + username + " 的二次验证？重置后该用户登录不再要求动态码。")) return;
+  try {
+    const json = await api(`/api/v1/admin/users/${encodeURIComponent(username)}/2fa`, { method: "DELETE" });
+    if (json.ok) { alert("已重置"); loadUsers(); }
+    else alert(json.msg || "操作失败");
+  } catch (e) { alert("请求失败：" + e.message); }
 }
 
 function showCreateKey() { document.getElementById("createKeyForm").style.display = "flex"; }
@@ -465,6 +707,7 @@ async function loadStats() {
     if (!json.ok) return;
     const d = json.data;
     window.__cg_keys = d.api_keys || [];
+    window.__cg_stats = d;
     document.getElementById("storageBadge").textContent = "存储: " + (d.storage || "sqlite");
     document.getElementById("kpi").innerHTML = `
       <div class="card"><div class="label">总验证</div><div class="num accent">${d.total}</div><div class="sub">今日 ${d.today}</div></div>
@@ -558,6 +801,7 @@ async function loadStats() {
       </div>`;
       return keyBlock;
     }).join("") || "<p style='color:#8b9bb8'>暂无 Key</p>";
+    refreshSecPanel();
   } catch (e) { console.error(e); }
 }
 
@@ -586,16 +830,18 @@ async function loadUsers() {
         <td>${esc(u.username)}</td>
         <td>${esc(u.group_name || "-")}</td>
         <td>${u.key_count} / ${u.key_quota == null ? "-" : u.key_quota}</td>
+        <td>${u.totp_enabled ? '<span class="pill pill-on">启用</span>' : '<span class="pill pill-off">未启用</span>'}</td>
         <td class="${u.enabled ? "ok" : "fail"}">${u.enabled ? "启用" : "禁用"}</td>
         <td style="color:#8b9bb8;font-size:12px">${u.created_at ? new Date(u.created_at * 1000).toLocaleString("zh-CN") : "-"}</td>
         <td>
           <button class="btn btn-sm btn-gray" onclick="showEditUser(${i})">编辑</button>
+          ${u.totp_enabled ? `<button class="btn btn-sm btn-gray" onclick="resetUser2fa('${escAttr(u.username)}')">重置2FA</button>` : ""}
           <button class="btn btn-sm btn-danger" onclick="deleteUser('${escAttr(u.username)}')">删除</button>
         </td>
       </tr>
       ${showEditRow ? `
       <tr id="editUserRow-${i}" style="display:none">
-        <td colspan="6">
+        <td colspan="7">
           <input id="editUserPass-${i}" type="password" placeholder="新密码（留空不修改）" class="form-input">
           <select id="editUserGroup-${i}" class="form-input"></select>
           <label><input type="checkbox" id="editUserEnabled-${i}"> 启用</label>

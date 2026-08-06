@@ -10,12 +10,13 @@
 ## 功能特性
 
 - **三种验证码**：滑动拼图（轨迹/时序行为校验）、点选（按序点击）、文字（兼容旧接口）
-- **多用户体系**：管理员 / 普通用户双角色、用户组配额、注册默认关闭
+- **多用户体系**：管理员 / 普通用户双角色、用户组配额、**开放注册**（管理面板开关，注册需验证码 + IP 限流）
+- **二次验证（TOTP）**：登录两步验证（动态验证码），管理员/普通用户均可绑定，管理员可重置用户 2FA
 - **登录验证码**：后台登录默认需图片验证码（防暴力破解）
 - **多 API Key 管理**：每 Key 连接配置一键复制、按 Key 使用统计、编辑/禁用/删除
 - **演示页 Key 隔离**：demo/文档页使用自动轮换的受限演示 Key，业务 Key 不在页面泄露
 - **安全**：IP 限流（按 action 独立配额）、失败锁定、pass_token 一次性校验、JWT 固定算法
-- **高可用**：可选 Redis（Token 自动过期 + 多实例共享限流）；线程化服务器 + 连接上限 + 请求体上限
+- **高可用**：可选 Redis（Token 自动过期 + 多实例共享限流）；线程化服务器 + 连接上限 + 请求体上限 + **HTTP/1.1 keep-alive**（复用连接，前端响应更快）
 - **构建友好**：自动选择国内/国际镜像源（基础镜像 + apt + pip）
 - **WordPress 插件**：后台选验证方式，保护登录/注册/评论/找回密码
 
@@ -112,7 +113,9 @@ docker compose pull && docker compose up -d
 | 普通用户 | 登录（需验证码）后仅管理自己的 Key（受组配额限制）、统计仅含自己的 Key、不可见 PASS_TOKEN_SECRET |
 
 - **用户组配额**：管理员创建组并设 `key_quota`（默认 5）；普通用户超限创建返回 403
-- **用户管理**：注册默认关闭，管理员后台创建（密码 PBKDF2 哈希存储）；删除用户级联删除其 Key；组内有用户的组不可删除
+- **开放注册**：管理后台「系统设置」开启后，登录页出现注册入口；注册用户归属默认组、普通用户权限；注册需图片验证码 + IP 限流（5 次/分钟），用户名不能与内置管理员冲突
+- **用户管理**：管理员后台创建/编辑用户（密码 PBKDF2 哈希存储）；删除用户级联删除其 Key；组内有用户的组不可删除
+- **二次验证（TOTP）**：登录后「安全设置」卡片绑定（Google Authenticator / Microsoft Authenticator 等，手动输入密钥或 otpauth URI）；绑定后登录需密码 + 6 位动态码两步验证；解绑需当前动态码；管理员可在用户管理中重置任意用户的 2FA
 - **登录验证码**：默认开启（`LOGIN_CAPTCHA=1`），图片验证码一次性使用，获取限流 10 次/分钟/IP
 - **pass_token 在线校验**：普通用户拿不到密钥时，接入方可留空密钥改用 `POST /api/v1/captcha/validate`（服务端验签 + 一次性消费）
 
@@ -191,9 +194,16 @@ POST /api/v1/captcha/validate
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/v1/admin/login` | 登录（需验证码），返回 JWT + role |
-| POST | `/api/v1/admin/captcha/generate` | 登录验证码（无需 API Key） |
-| GET | `/api/v1/stats` | 统计（管理员全量 / 普通用户仅自己的） |
+| POST | `/api/v1/register` | 用户注册（需管理面板开启；验证码 + IP 限流） |
+| POST | `/api/v1/admin/login` | 登录（需验证码）；已启用 2FA 时返回 `need_2fa` + `pre_token` |
+| POST | `/api/v1/admin/login/2fa` | 二次验证第二步：`pre_token` + 6 位动态码 → 正式 JWT（pre_token 一次性） |
+| POST | `/api/v1/admin/captcha/generate` | 登录/注册验证码（无需 API Key） |
+| GET / PUT | `/api/v1/admin/settings` | 系统设置（仅管理员）：`registration_enabled` 开放注册开关 |
+| POST | `/api/v1/admin/2fa/setup` | 生成 TOTP 密钥与 otpauth URI（登录态，不落库） |
+| POST | `/api/v1/admin/2fa/confirm` | 确认启用 2FA（密钥 + 当前动态码） |
+| DELETE | `/api/v1/admin/2fa` | 解绑自身 2FA（需当前动态码） |
+| DELETE | `/api/v1/admin/users/{username}/2fa` | 管理员重置指定用户的 2FA |
+| GET | `/api/v1/stats` | 统计（管理员全量 / 普通用户仅自己的，含当前账号 `twofa_enabled`） |
 | GET / POST | `/api/v1/admin/keys` | Key 列表（含 connect 配置）/ 创建（普通用户受配额） |
 | PUT | `/api/v1/admin/keys/{key}` | 编辑名称/备注 |
 | PUT / DELETE | `/api/v1/admin/keys/{key}/enable\|disable` | 启停 / 删除（仅本人或管理员） |

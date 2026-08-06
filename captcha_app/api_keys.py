@@ -1,11 +1,24 @@
-"""API Key CRUD"""
+"""API Key CRUD（check 带内存缓存，减少每请求 DB 查询）"""
 import secrets
+import time
 
 from . import config
 from .db import get_db
 from .utils import now
 
 DEMO_PREFIX = "cg-demo-"
+
+# Key 状态缓存：key -> (enabled, expires_at)。启停/删除时立即失效；TTL 兜底防多实例不一致
+_API_KEY_CACHE = {}
+_API_KEY_CACHE_TTL = 30
+
+
+def _invalidate_api_key(key):
+    _API_KEY_CACHE.pop(key, None)
+
+
+def _cache_clear():
+    _API_KEY_CACHE.clear()
 
 
 def ensure_demo_key() -> str:
@@ -17,6 +30,7 @@ def ensure_demo_key() -> str:
     rows = conn.execute("SELECT key FROM api_keys WHERE key LIKE ?", (DEMO_PREFIX + "%",)).fetchall()
     for r in rows:
         conn.execute("DELETE FROM api_keys WHERE key = ?", (r["key"],))
+        _invalidate_api_key(r["key"])
     key = DEMO_PREFIX + secrets.token_hex(8)
     conn.execute(
         "INSERT INTO api_keys (key, name, owner, created_at, enabled, note) "
@@ -41,9 +55,15 @@ def get_demo_key() -> str:
 def check_api_key(key):
     if not key:
         return False
+    now_t = now()
+    hit = _API_KEY_CACHE.get(key)
+    if hit and hit[1] > now_t:
+        return hit[0]
     conn = get_db()
     row = conn.execute("SELECT enabled FROM api_keys WHERE key = ?", (key,)).fetchone()
-    return bool(row and row["enabled"])
+    enabled = bool(row and row["enabled"])
+    _API_KEY_CACHE[key] = (enabled, now_t + _API_KEY_CACHE_TTL)
+    return enabled
 
 def list_api_keys():
     conn = get_db()
@@ -67,6 +87,7 @@ def set_api_key_enabled(key, enabled):
         return False
     conn.execute("UPDATE api_keys SET enabled = ? WHERE key = ?", (1 if enabled else 0, key))
     conn.commit()
+    _invalidate_api_key(key)
     return True
 
 def update_api_key(key, name, note):
@@ -90,5 +111,6 @@ def delete_api_key(key):
         return False
     conn.execute("DELETE FROM api_keys WHERE key = ?", (key,))
     conn.commit()
+    _invalidate_api_key(key)
     return True
 

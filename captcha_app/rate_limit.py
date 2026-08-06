@@ -16,6 +16,7 @@ _ACTION_LIMITS = {
     "generate": config.RATE_LIMIT_GENERATE,
     "login_captcha": config.LOGIN_CAPTCHA_RATE,
     "generate_demo": config.DEMO_KEY_RATE,
+    "register": 5,
 }
 
 

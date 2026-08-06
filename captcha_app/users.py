@@ -101,6 +101,7 @@ def list_users():
     rows = conn.execute("""
         SELECT u.id, u.username, u.group_id, u.enabled, u.created_at,
                g.name AS group_name, g.key_quota,
+               (CASE WHEN u.totp_secret IS NULL OR u.totp_secret = '' THEN 0 ELSE 1 END) AS totp_enabled,
                (SELECT COUNT(*) FROM api_keys k WHERE k.owner = u.username) AS key_count
         FROM users u LEFT JOIN user_groups g ON g.id = u.group_id
         ORDER BY u.id
