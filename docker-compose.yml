@@ -28,6 +28,8 @@ services:
       - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}
       # 启用 Redis 时取消下面两行注释，并启用下方 redis 服务
       # - REDIS_URL=redis://redis:6379/0
+      # 启用 PostgreSQL 时取消注释并启用下方 postgres 服务（否则使用 SQLite）
+      # - DATABASE_URL=postgresql://captcha:${POSTGRES_PASSWORD}@postgres:5432/captcha
       - DB_PATH=/data/captcha.db
     volumes:
       - captcha_data:/data
@@ -42,6 +44,18 @@ services:
   #   volumes:
   #     - redis_data:/data
 
+  # 可选 PostgreSQL（取消注释、在 .env 设置 POSTGRES_PASSWORD 并启用上面的 DATABASE_URL）
+  # postgres:
+  #   image: docker.m.daocloud.io/library/postgres:16-alpine
+  #   restart: unless-stopped
+  #   environment:
+  #     - POSTGRES_DB=captcha
+  #     - POSTGRES_USER=captcha
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 未设置：请先在 .env 中填写}
+  #   volumes:
+  #     - pg_data:/var/lib/postgresql/data
+
 volumes:
   captcha_data:
   # redis_data:
+  # pg_data:

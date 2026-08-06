@@ -1,3 +1,4 @@
 Pillow==12.3.0
 PyJWT==2.13.0
 redis==5.2.1
+psycopg[binary]==3.3.4

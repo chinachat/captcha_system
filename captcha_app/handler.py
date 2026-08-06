@@ -163,6 +163,13 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         auth = self.headers.get("Authorization", "")
         return self.headers.get("X-API-Key") or auth.replace("Bearer ", "")
 
+    def _storage_label(self):
+        """存储标识：postgres / redis / sqlite。"""
+        from .db import backend
+        if backend() == "postgres":
+            return "postgres"
+        return "redis" if get_redis() else "sqlite"
+
     def _require_api_key(self):
         key = self._get_api_key()
         if not check_api_key(key):
@@ -259,7 +266,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             self._send(200, {
                 "ok": True,
                 "ts": now(),
-                "storage": "redis" if get_redis() else "sqlite",
+                "storage": self._storage_label(),
                 "rate_limit": config.RATE_LIMIT_GENERATE,
             })
         elif path == "/api/v1/stats":
@@ -1164,7 +1171,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             "title": "动态验证码 API 文档 v2",
             "auth": "Header: X-API-Key: <key>",
             "rate_limit": f"生成接口每 IP 每分钟最多 {config.RATE_LIMIT_GENERATE} 次",
-            "storage": "redis" if get_redis() else "sqlite",
+            "storage": self._storage_label(),
             "endpoints": [
                 {"method": "POST", "path": "/api/v1/captcha/slider/generate", "desc": "生成滑动验证码"},
                 {"method": "POST", "path": "/api/v1/captcha/slider/verify", "body": {"token": "", "offset_x": 0}},

@@ -44,11 +44,10 @@ def ensure_default_group() -> int:
     if row:
         return row["id"]
     cur = conn.execute(
-        "INSERT INTO user_groups (name, key_quota, created_at) VALUES (?, ?, ?)",
+        "INSERT INTO user_groups (name, key_quota, created_at) VALUES (?, ?, ?) RETURNING id",
         ("默认组", DEFAULT_QUOTA, now()),
     )
-    conn.commit()
-    return cur.lastrowid
+    return cur.fetchone()["id"]
 
 
 def list_groups():
@@ -63,11 +62,10 @@ def list_groups():
 def create_group(name: str, quota: int) -> int:
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO user_groups (name, key_quota, created_at) VALUES (?, ?, ?)",
+        "INSERT INTO user_groups (name, key_quota, created_at) VALUES (?, ?, ?) RETURNING id",
         (name, max(0, int(quota)), now()),
     )
-    conn.commit()
-    return cur.lastrowid
+    return cur.fetchone()["id"]
 
 
 def update_group(gid, name: str, quota: int) -> bool:
@@ -122,11 +120,11 @@ def create_user(username: str, password: str, group_id) -> tuple:
         if not g:
             return False, "用户组不存在", None
     cur = conn.execute(
-        "INSERT INTO users (username, password_hash, group_id, enabled, created_at) VALUES (?, ?, ?, 1, ?)",
+        "INSERT INTO users (username, password_hash, group_id, enabled, created_at) "
+        "VALUES (?, ?, ?, 1, ?) RETURNING id",
         (username, hash_password(password), group_id, now()),
     )
-    conn.commit()
-    return True, "", {"id": cur.lastrowid, "username": username, "group_id": group_id, "enabled": 1}
+    return True, "", {"id": cur.fetchone()["id"], "username": username, "group_id": group_id, "enabled": 1}
 
 
 def update_user(username: str, password: str = None, group_id=None, enabled=None) -> bool:

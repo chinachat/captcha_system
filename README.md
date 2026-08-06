@@ -16,7 +16,7 @@
 - **多 API Key 管理**：每 Key 连接配置一键复制、按 Key 使用统计、编辑/禁用/删除
 - **演示页 Key 隔离**：demo/文档页使用自动轮换的受限演示 Key，业务 Key 不在页面泄露
 - **安全**：IP 限流（按 action 独立配额）、失败锁定、pass_token 一次性校验、JWT 固定算法
-- **高可用**：可选 Redis（Token 自动过期 + 多实例共享限流）；线程化服务器 + 连接上限 + 请求体上限 + **HTTP/1.1 keep-alive**（复用连接，前端响应更快）
+- **高可用**：可选 Redis（Token 自动过期 + 多实例共享限流）；**可选 PostgreSQL 存储**（默认 SQLite，设置 `DATABASE_URL` 即切换）；线程化服务器 + 连接上限 + 请求体上限 + **HTTP/1.1 keep-alive**（复用连接，前端响应更快）
 - **构建友好**：自动选择国内/国际镜像源（基础镜像 + apt + pip）
 - **WordPress 插件**：后台选验证方式，保护登录/注册/评论/找回密码
 
@@ -103,6 +103,17 @@ docker compose pull && docker compose up -d
 - 国内拉取较慢时可为 docker 配置镜像加速器，或改用下方本地构建模式
 - 本地构建（开发/无外网拉取场景）：`./build.sh`（自动探测 daocloud → 阿里云 → Docker Hub 基础镜像源，镜像内 apt/pip 自动切换国内源）后 `docker compose up -d --build`
 
+### 使用 PostgreSQL 存储（可选）
+
+默认使用 SQLite（单文件、零配置，`DB_PATH` 持久化即可）。需要 PostgreSQL 时：
+
+1. `.env` 设置 `POSTGRES_PASSWORD=强密码`
+2. `docker-compose.yml` 中取消注释 `postgres` 服务与 `DATABASE_URL` 环境变量
+3. `docker compose up -d` 启动后自动建表（首次启动自动完成 DDL 与迁移）
+
+> 说明：`DATABASE_URL` 为空时自动回退 SQLite，两种存储的接口与行为完全一致；
+> 已有 SQLite 数据不会自动迁移到 PostgreSQL，切换存储需自行导入。
+
 ---
 
 ## 多用户体系
@@ -141,6 +152,7 @@ docker compose pull && docker compose up -d
 | `MAX_CONCURRENT` | `64` | 最大并发连接（超限拒绝新连接） |
 | `DB_PATH` | `/tmp/captcha_system.db` | SQLite 路径（Docker 用 `/data/captcha.db`） |
 | `REDIS_URL` | 空 | 如 `redis://127.0.0.1:6379/0` |
+| `DATABASE_URL` | 空 | PostgreSQL 连接串（如 `postgresql://user:pass@host:5432/dbname`）；为空使用 SQLite |
 | `TRUSTED_PROXIES` | 空 | 可信代理 IP/CIDR，仅命中时才信任 `X-Forwarded-For`（Docker 在 `.env` 配置 `TRUSTED_PROXIES` 注入） |
 | `RATE_LIMIT_GENERATE` | `30` | 生成接口限流（次/分钟/IP） |
 | `DEMO_KEY_RATE` | `100` | 演示 Key 全局限流（次/分钟，所有 IP 合计） |

@@ -108,7 +108,7 @@ def log_attempt(token_id, ctype, success, detail, ip="", ua="", api_key=""):
 def consume_pass_jti(jti: str, ttl: int = 120) -> bool:
     """pass_token 一次性消费（原子）：返回 True 表示首次消费成功。
 
-    Redis 模式用 SET NX EX；SQLite 用 INSERT OR IGNORE。
+    Redis 模式用 SET NX EX；SQLite/PostgreSQL 用 ON CONFLICT DO NOTHING。
     """
     if not jti:
         return True
@@ -124,10 +124,9 @@ def consume_pass_jti(jti: str, ttl: int = 120) -> bool:
     conn = get_db()
     try:
         cur = conn.execute(
-            "INSERT OR IGNORE INTO captcha_passes (jti, created_at) VALUES (?, ?)",
+            "INSERT INTO captcha_passes (jti, created_at) VALUES (?, ?) ON CONFLICT (jti) DO NOTHING",
             (jti, now()),
         )
-        conn.commit()
         return cur.rowcount > 0
     except Exception as e:
         print("[WARN] consume_pass_jti failed:", e)

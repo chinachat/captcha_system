@@ -3,7 +3,7 @@ from datetime import datetime
 
 from . import config
 from .api_keys import list_api_keys
-from .db import get_db
+from .db import backend, get_db
 from .redis_client import get_redis
 from .utils import now
 
@@ -114,7 +114,7 @@ def get_stats(owner=None):
             FROM captcha_logs l
             LEFT JOIN api_keys k ON k.key = l.api_key
             WHERE l.api_key IS NOT NULL AND k.owner = ?
-            GROUP BY l.api_key
+            GROUP BY l.api_key, k.name
             ORDER BY total DESC
         """, (t - 86400, owner)).fetchall()
     else:
@@ -128,7 +128,7 @@ def get_stats(owner=None):
             FROM captcha_logs l
             LEFT JOIN api_keys k ON k.key = l.api_key
             WHERE l.api_key IS NOT NULL
-            GROUP BY l.api_key
+            GROUP BY l.api_key, k.name
             ORDER BY total DESC
         """, (t - 86400,)).fetchall()
 
@@ -156,5 +156,5 @@ def get_stats(owner=None):
             "generate_per_min": config.RATE_LIMIT_GENERATE,
             "window": config.RATE_LIMIT_WINDOW,
         },
-        "storage": "redis" if get_redis() else "sqlite",
+        "storage": "postgres" if backend() == "postgres" else ("redis" if get_redis() else "sqlite"),
     }

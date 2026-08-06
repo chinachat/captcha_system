@@ -53,6 +53,9 @@ LOGIN_CAPTCHA_RATE = int(os.environ.get("LOGIN_CAPTCHA_RATE", "10"))
 
 REDIS_URL = os.environ.get("REDIS_URL", "")
 
+# PostgreSQL 连接串（如 postgresql://user:pass@host:5432/dbname）；为空则使用 SQLite
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
 # 可信代理 IP / CIDR 列表（逗号分隔），仅当请求真实来源 IP 命中该列表时才信任 X-Forwarded-For
 # 例如: "192.168.1.0/24,10.0.0.1" 或 "127.0.0.1"
 TRUSTED_PROXIES = os.environ.get("TRUSTED_PROXIES", "")
