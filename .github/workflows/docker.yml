@@ -54,6 +54,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # CI 在 GitHub 国际网络，必须用官方基础镜像（Dockerfile 默认 daocloud 国内源不可达）
+          build-args: |
+            BASE_IMAGE=python:3.12-slim
 
       - name: 设置包可见性为 public（失败不影响镜像推送）
         run: |
