@@ -29,7 +29,7 @@
     .btn-sm { padding: 5px 10px; font-size: 12px; }
     .btn-danger { background: #dc2626; }
     .btn-gray { background: #334155; }
-    .err { color: var(--err); font-size: 13px; text-align: center; margin-top: 10px; display: none; }
+    #loginErr { color: var(--err); font-size: 13px; text-align: center; margin-top: 10px; display: none; }
 
     .shell { display: none; }
     .topbar {
@@ -373,7 +373,6 @@ let preToken = "";
 let twofaSetup = null;
 let usersCache = [];
 let groupsCache = [];
-let showEditRow = false;
 
 async function api(path, opts = {}) {
   const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
@@ -712,7 +711,7 @@ async function loadStats() {
     document.getElementById("kpi").innerHTML = `
       <div class="card"><div class="label">总验证</div><div class="num accent">${d.total}</div><div class="sub">今日 ${d.today}</div></div>
       <div class="card"><div class="label">成功</div><div class="num ok">${d.success}</div><div class="sub">今日 ${d.today_success || 0}</div></div>
-      <div class="card"><div class="label">失败</div><div class="num err">${d.fail}</div></div>
+      <div class="card"><div class="label">失败</div><div class="num fail">${d.fail}</div></div>
       <div class="card"><div class="label">成功率</div><div class="num">${d.success_rate}%</div><div class="sub">今日 ${d.today_rate || 0}%</div></div>
       <div class="card"><div class="label">滑动</div><div class="num accent">${d.slider}</div></div>
       <div class="card"><div class="label">点选</div><div class="num accent">${d.click || 0}</div></div>
@@ -839,7 +838,6 @@ async function loadUsers() {
           <button class="btn btn-sm btn-danger" onclick="deleteUser('${escAttr(u.username)}')">删除</button>
         </td>
       </tr>
-      ${showEditRow ? `
       <tr id="editUserRow-${i}" style="display:none">
         <td colspan="7">
           <input id="editUserPass-${i}" type="password" placeholder="新密码（留空不修改）" class="form-input">
@@ -848,7 +846,7 @@ async function loadUsers() {
           <button class="btn btn-sm" onclick="saveUser(${i})">保存</button>
           <button class="btn btn-sm btn-gray" onclick="toggleEditUserRow(${i})">取消</button>
         </td>
-      </tr>` : ""}
+      </tr>
     `).join("") || "<tr><td colspan='6' style='text-align:center;color:#8b9bb8'>暂无用户</td></tr>";
   } catch (e) { console.error(e); }
 }
