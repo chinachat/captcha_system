@@ -175,16 +175,17 @@
         <h3>功能总览</h3>
         <ul>
           <li>滑动拼图（轨迹/时序行为校验）、点选（按序点击）、文字（兼容旧接口）三种验证方式</li>
-          <li><strong>多用户体系</strong>：管理员 / 普通用户双角色，用户组配额，注册默认关闭</li>
+          <li><strong>多用户体系</strong>：管理员 / 普通用户双角色，用户组配额，<strong>开放注册</strong>（管理后台开关，注册需验证码 + IP 限流）</li>
+          <li><strong>二次验证（TOTP）</strong>：登录两步验证，绑定支持<strong>二维码扫码</strong>（Google/Microsoft Authenticator 等），管理员可重置用户 2FA</li>
           <li><strong>登录验证码</strong>：后台登录默认需图片验证码（防暴力破解）</li>
           <li>多 API Key 管理、每 Key 连接配置一键复制、按 Key 使用统计</li>
           <li><strong>演示页 Key 隔离</strong>：demo/文档页使用自动轮换的受限演示 Key，业务 Key 不泄露</li>
           <li>IP 限流（按 action 独立配额）、失败锁定、pass_token 一次性校验</li>
-          <li>可选 Redis（Token 自动过期 + 多实例共享限流）；无 Redis 自动回退 SQLite/内存</li>
+          <li>可选 Redis（Token 自动过期 + 多实例共享限流）；<strong>可选 PostgreSQL 存储</strong>（设置 <code>DATABASE_URL</code> 即切换，默认 SQLite）；<strong>HTTP/1.1 keep-alive</strong>（复用连接，前端响应更快）</li>
           <li>构建自动选择国内/国际镜像源（基础镜像 + apt + pip）</li>
         </ul>
         <h3>技术栈</h3>
-        <p>Python 3.10+ / <code>http.server</code>（线程化）/ Pillow / PyJWT / SQLite（可选 redis）</p>
+        <p>Python 3.10+ / <code>http.server</code>（线程化）/ Pillow / PyJWT / qrcode / SQLite（可选 PostgreSQL、redis）</p>
       </div>
 
       <div class="section" id="快速开始">
@@ -203,21 +204,24 @@ export DEFAULT_API_KEY='业务用的 Key'
 python3 app.py</code></pre>
         <p>默认监听 <code>0.0.0.0:8080</code>。生产环境请固定 <code>SECRET_KEY</code>（重启后 JWT 不会失效）。</p>
 
-        <h3>Docker 部署（自动选择国内/国际镜像源）</h3>
-        <pre class="code"><code>cd captcha_system
-git pull origin main
+        <h3>Docker 部署（直接拉取镜像，无需本地构建）</h3>
+        <pre class="code"><code># ① 拉取编排文件与配置模板（无需 clone 仓库）
+curl -O https://raw.githubusercontent.com/chinachat/captcha_system/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/chinachat/captcha_system/main/.env.example
 
-# ① 配置生产凭据（.env 不入库，之后 pull 永不冲突）
+# ② 配置生产凭据（.env 不入库）
 cp .env.example .env
 # 编辑 .env 填入 SECRET_KEY / ADMIN_PASS / DEFAULT_API_KEY（可用 openssl rand -hex 32 生成）
 
-# ② 自动探测国内/国际基础镜像源后构建
-./build.sh
-
-# ③ 启动
+# ③ 启动（自动拉取 ghcr.io/chinachat/captcha_system，多架构 amd64/arm64）
 docker compose up -d captcha
-docker compose logs -f captcha</code></pre>
-        <p>也可直接 <code>docker compose up -d --build</code>（默认国内 daocloud 源）；基础镜像源可用 <code>BASE_IMAGE</code> 环境变量覆盖，如 <code>BASE_IMAGE=python:3.12-slim</code>。</p>
+docker compose logs -f captcha
+
+# 更新：docker compose pull && docker compose up -d</code></pre>
+        <p>也可本地构建（开发/无外网拉取场景）：<code>./build.sh</code>（自动探测 daocloud → 阿里云 → Docker Hub 基础镜像源）后 <code>docker compose up -d --build</code>。</p>
+
+        <h3>使用 PostgreSQL 存储（可选）</h3>
+        <p>默认 SQLite（单文件零配置，<code>DB_PATH</code> 持久化即可）。需要 PostgreSQL 时：<code>.env</code> 设置 <code>POSTGRES_PASSWORD</code>，取消注释 <code>docker-compose.yml</code> 中 <code>postgres</code> 服务与 <code>DATABASE_URL</code> 环境变量，启动后自动建表迁移。两种存储的接口与行为完全一致；切换存储需自行迁移已有数据。</p>
 
         <h3>访问地址</h3>
         <div class="table-wrap"><table>
@@ -230,7 +234,7 @@ docker compose logs -f captcha</code></pre>
           </tbody>
         </table></div>
 
-        <blockquote>默认管理员：<code>admin</code> / 密码取 <code>ADMIN_PASS</code> 环境变量（默认 <code>admin123</code>，生产必须修改）。普通用户由管理员在后台"用户管理"创建，注册功能默认关闭。</blockquote>
+        <blockquote>默认管理员：<code>admin</code> / 密码取 <code>ADMIN_PASS</code> 环境变量（默认 <code>admin123</code>，生产必须修改）。普通用户由管理员在后台"用户管理"创建，或在后台「系统设置」<strong>开启开放注册</strong>后由用户自助注册。</blockquote>
       </div>
 
       <div class="section" id="环境变量">
@@ -252,6 +256,7 @@ docker compose logs -f captcha</code></pre>
             <tr><td><code>REQUEST_TIMEOUT</code></td><td><code>15</code></td><td>单连接读取超时（秒）</td></tr>
             <tr><td><code>MAX_CONCURRENT</code></td><td><code>64</code></td><td>最大并发连接（超限拒绝新连接）</td></tr>
             <tr><td><code>DB_PATH</code></td><td><code>/tmp/captcha_system.db</code></td><td>SQLite 路径（Docker 用 <code>/data/captcha.db</code>）</td></tr>
+            <tr><td><code>DATABASE_URL</code></td><td>空</td><td>PostgreSQL 连接串（如 <code>postgresql://user:pass@host:5432/dbname</code>）；为空使用 SQLite</td></tr>
             <tr><td><code>REDIS_URL</code></td><td>空</td><td>如 <code>redis://127.0.0.1:6379/0</code></td></tr>
             <tr><td><code>TRUSTED_PROXIES</code></td><td>空</td><td>可信代理 IP/CIDR，仅命中时才信任 <code>X-Forwarded-For</code></td></tr>
             <tr><td><code>RATE_LIMIT_GENERATE</code></td><td><code>30</code></td><td>生成接口限流（次/分钟/IP）</td></tr>
@@ -301,7 +306,16 @@ Authorization: Bearer &lt;your-api-key&gt;</code></pre>
           <li>管理员创建用户组并设置 <code>key_quota</code>（该组用户可创建的 API Key 上限，默认 5）</li>
           <li>普通用户创建 Key 时自动检查配额，超限返回 403</li>
           <li>组内有用户的组不可删除；删除用户会级联删除其 API Key</li>
-          <li>注册功能默认关闭：普通用户由管理员在后台创建（用户名 + 初始密码，密码以 PBKDF2 哈希存储）</li>
+          <li><strong>开放注册</strong>：管理后台「系统设置」开启后，登录页出现注册入口；注册用户归属默认组、普通用户权限；注册需图片验证码 + IP 限流（5 次/分钟），用户名不能与内置管理员冲突</li>
+          <li>管理员后台创建用户（用户名 + 初始密码，密码以 PBKDF2 哈希存储）</li>
+        </ul>
+
+        <h3>二次验证（TOTP）</h3>
+        <ul>
+          <li><strong>绑定</strong>：登录后在「安全设置」卡片点击绑定，<strong>用 Authenticator 应用（Google / Microsoft 等）直接扫描二维码</strong>；也可手动输入密钥或粘贴 otpauth URI</li>
+          <li><strong>登录</strong>：绑定后需密码 + 6 位动态码两步验证（pre_token 5 分钟一次性，输错动态码可重试）</li>
+          <li><strong>解绑</strong>：需当前动态码；管理员可在用户管理中重置任意用户的 2FA</li>
+          <li>内置管理员同样支持绑定（密钥存 settings 表）</li>
         </ul>
 
         <h3>登录验证码</h3>
@@ -360,9 +374,16 @@ POST /api/v1/captcha/text/verify        # body: {"token","code"}</code></pre>
         <div class="table-wrap"><table>
           <thead><tr><th>方法</th><th>路径</th><th>说明</th></tr></thead>
           <tbody>
-            <tr><td>POST</td><td><code>/api/v1/admin/login</code></td><td>登录（需验证码），返回 JWT + role</td></tr>
-            <tr><td>POST</td><td><code>/api/v1/admin/captcha/generate</code></td><td>登录验证码（无需 API Key）</td></tr>
-            <tr><td>GET</td><td><code>/api/v1/stats</code></td><td>统计（管理员全量 / 普通用户仅自己的）</td></tr>
+            <tr><td>POST</td><td><code>/api/v1/register</code></td><td>用户注册（需管理面板开启；验证码 + IP 限流）</td></tr>
+            <tr><td>POST</td><td><code>/api/v1/admin/login</code></td><td>登录（需验证码）；已启用 2FA 时返回 <code>need_2fa</code> + <code>pre_token</code></td></tr>
+            <tr><td>POST</td><td><code>/api/v1/admin/login/2fa</code></td><td>二次验证第二步：<code>pre_token</code> + 6 位动态码 → 正式 JWT（一次性）</td></tr>
+            <tr><td>POST</td><td><code>/api/v1/admin/captcha/generate</code></td><td>登录/注册验证码（无需 API Key）</td></tr>
+            <tr><td>GET/PUT</td><td><code>/api/v1/admin/settings</code></td><td>系统设置（仅管理员）：<code>registration_enabled</code> 开放注册开关</td></tr>
+            <tr><td>POST</td><td><code>/api/v1/admin/2fa/setup</code></td><td>生成 TOTP 密钥 + otpauth URI + <strong>二维码 PNG（base64）</strong>（登录态，不落库）</td></tr>
+            <tr><td>POST</td><td><code>/api/v1/admin/2fa/confirm</code></td><td>确认启用 2FA（密钥 + 当前动态码）</td></tr>
+            <tr><td>DELETE</td><td><code>/api/v1/admin/2fa</code></td><td>解绑自身 2FA（需当前动态码）</td></tr>
+            <tr><td>DELETE</td><td><code>/api/v1/admin/users/{username}/2fa</code></td><td>管理员重置指定用户的 2FA</td></tr>
+            <tr><td>GET</td><td><code>/api/v1/stats</code></td><td>统计（管理员全量 / 普通用户仅自己的，含当前账号 <code>twofa_enabled</code>）</td></tr>
             <tr><td>GET/POST</td><td><code>/api/v1/admin/keys</code></td><td>Key 列表（含 connect 配置）/ 创建（普通用户受配额限制）</td></tr>
             <tr><td>PUT</td><td><code>/api/v1/admin/keys/{key}</code></td><td>编辑名称/备注</td></tr>
             <tr><td>PUT/DELETE</td><td><code>/api/v1/admin/keys/{key}/enable|disable</code> / <code>/api/v1/admin/keys/{key}</code></td><td>启停 / 删除（仅本人或管理员）</td></tr>

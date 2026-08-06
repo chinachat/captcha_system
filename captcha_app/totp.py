@@ -60,3 +60,15 @@ def otpauth_uri(secret: str, account: str, issuer: str = "captcha_system") -> st
     label = quote(f"{issuer}:{account}", safe="")
     return (f"otpauth://totp/{label}?secret={secret}&issuer={quote(issuer, safe='')}"
             f"&algorithm=SHA1&digits={DIGITS}&period={STEP}")
+
+
+def qr_png_base64(secret: str, account: str, issuer: str = "captcha_system") -> str:
+    """生成 otpauth URI 的二维码 PNG（base64，Authenticator 直接扫描绑定）。"""
+    from .utils import b64_image
+    try:
+        import qrcode
+    except ImportError:
+        return ""
+    uri = otpauth_uri(secret, account, issuer)
+    img = qrcode.make(uri, box_size=4, border=2)
+    return b64_image(img)

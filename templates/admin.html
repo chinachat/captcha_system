@@ -254,10 +254,13 @@
         <div id="twofaBind" style="display:none;margin-top:10px">
           <p style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.7">
             使用 Google Authenticator / Microsoft Authenticator 等应用添加：<br>
-            ① 应用内选择「手动输入密钥」，输入下方密钥；<br>
-            ② 或在支持导入链接的应用中粘贴下方 otpauth URI；<br>
+            ① <b>直接扫描下方二维码</b>（推荐）；<br>
+            ② 或应用内「手动输入密钥」，输入下方密钥；<br>
             ③ 输入应用生成的 6 位动态码完成绑定。
           </p>
+          <div style="background:#fff;display:inline-block;padding:8px;border-radius:8px;margin-bottom:8px">
+            <img id="twofaQr" alt="2FA 二维码" style="width:160px;height:160px;display:block">
+          </div>
           <code class="cg-cfg" id="twofaSecret"></code>
           <div class="form-row" style="margin-top:8px">
             <input id="twofaConfirmCode" placeholder="6 位动态验证码" maxlength="6" autocomplete="off" style="max-width:180px">
@@ -606,6 +609,13 @@ async function setup2fa() {
     twofaSetup = json.data;
     document.getElementById("twofaBind").style.display = "block";
     document.getElementById("twofaUnbind").style.display = "none";
+    const qrImg = document.getElementById("twofaQr");
+    if (twofaSetup.qr) {
+      qrImg.src = twofaSetup.qr;  // 服务端已返回完整 data URI（data:image/png;base64,...）
+      qrImg.style.display = "block";
+    } else {
+      qrImg.style.display = "none";
+    }
     document.getElementById("twofaSecret").textContent =
       "密钥: " + twofaSetup.secret + "\notpauth URI: " + twofaSetup.uri;
     document.getElementById("twofaConfirmCode").value = "";

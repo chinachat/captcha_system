@@ -946,7 +946,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
         self._send(200, {"ok": True, "msg": "注册成功，请登录"})
 
     def _api_2fa_setup(self):
-        """生成 TOTP 密钥（暂不落库，confirm 通过后才启用）。"""
+        """生成 TOTP 密钥（不落库，确认后才启用）；附带二维码 PNG 供 Authenticator 扫描。"""
         auth = self._require_auth()
         if not auth:
             return
@@ -956,6 +956,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             "account": account,
             "secret": secret,
             "uri": totp.otpauth_uri(secret, account),
+            "qr": totp.qr_png_base64(secret, account),
         }})
 
     def _api_2fa_confirm(self):
