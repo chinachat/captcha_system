@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   captcha:
-    # 直接拉取 GHCR 预构建镜像（多架构 amd64/arm64/armv7，无需本地构建）。
+    # 直接拉取 GHCR 预构建镜像（多架构 amd64/arm64，无需本地构建；armv7 需本地 ./build.sh）。
     # 本地构建模式：注释掉 image 行，改回如下 build 配置后 docker compose up -d --build：
     # build:
     #   context: .

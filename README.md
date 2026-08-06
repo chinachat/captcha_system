@@ -78,7 +78,7 @@ python3 app.py
 
 ### Docker 部署（推荐：直接拉取镜像）
 
-镜像已自动构建发布到 **GHCR**（`ghcr.io/chinachat/captcha_system`，多架构 amd64 / arm64 / armv7），无需 clone 仓库或本地构建：
+镜像已自动构建发布到 **GHCR**（`ghcr.io/chinachat/captcha_system`，多架构 amd64 / arm64），无需 clone 仓库或本地构建：
 
 ```bash
 # ① 拉取 compose 文件与凭据模板（无需克隆整个仓库）

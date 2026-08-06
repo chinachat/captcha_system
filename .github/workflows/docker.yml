@@ -46,11 +46,13 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=ref,event=branch
 
-      - name: 构建并推送（amd64 / arm64 / armv7）
+      - name: 构建并推送（amd64 / arm64）
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          # arm/v7 不提供：Pillow 官方无 armv7l wheel（需源码编译，Dockerfile 未含编译链），
+          # 且 QEMU 模拟编译耗时 20-40 分钟。需要 armv7 可本地 ./build.sh 构建。
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
