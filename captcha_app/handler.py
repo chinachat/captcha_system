@@ -254,7 +254,9 @@ class CaptchaHandler(BaseHTTPRequestHandler):
 
     def _handle_get(self):
         path = self._path()
-        if path in ("/", "/demo"):
+        if path == "/":
+            self._serve_landing()
+        elif path == "/demo":
             self._serve_demo()
         elif path in ("/admin", "/admin/"):
             self._serve_admin_page()
@@ -1132,6 +1134,10 @@ class CaptchaHandler(BaseHTTPRequestHandler):
 
     def _serve_call_docs(self):
         self._serve_template("api-docs.html", replace_key=True)
+
+    def _serve_landing(self):
+        """项目首页（科技感落地页，双主题，内置登录/注册）。"""
+        self._serve_template("landing.html")
 
     def _serve_demo(self):
         self._serve_template("demo.html", replace_key=True)

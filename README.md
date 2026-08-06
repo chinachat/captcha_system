@@ -45,7 +45,7 @@ captcha_system/
 │   ├── users.py                # 多用户：用户组 / 用户 / 配额 / 密码哈希
 │   ├── stats.py                # 统计（按角色过滤）
 │   └── handler.py              # HTTP 路由
-├── templates/                  # demo / admin / api-docs / guide
+├── templates/                  # landing（首页）/ demo / admin / api-docs / guide
 ├── wordpress/
 │   └── captcha-guard/          # WordPress 接入插件（含安装包 zip）
 └── fonts/                      # 可选自备中文字体
@@ -72,7 +72,8 @@ python3 app.py
 
 | 地址 | 说明 |
 |------|------|
-| http://127.0.0.1:8080/ | 前端演示页 |
+| http://127.0.0.1:8080/ | 项目首页（科技感落地页，内置登录/注册） |
+| http://127.0.0.1:8080/demo | 验证码在线演示页 |
 | http://127.0.0.1:8080/admin | 管理后台（登录需验证码） |
 | http://127.0.0.1:8080/api/v1/health | 健康检查 |
 | http://127.0.0.1:8080/api/v1/docs | API 文档（JSON） |
