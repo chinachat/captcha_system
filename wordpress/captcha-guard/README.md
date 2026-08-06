@@ -27,7 +27,7 @@
 
 ### 方式一：后台上传（推荐）
 
-1. 下载 `captcha-guard-1.0.0.zip`
+1. 下载 `captcha-guard-1.0.10.zip`
 2. WordPress 后台 → 插件 → 安装插件 → 上传插件 → 选择 zip → 立即安装
 3. 启用插件
 
@@ -79,7 +79,8 @@ python3 app.py
 > 安全建议：`API Key` 与 `PASS_TOKEN_SECRET` 存于 `wp_options` 表（明文）。高安全环境建议：
 > 1. 验证码服务侧为插件创建**专用 API Key**（便于单独禁用）；
 > 2. 定期轮换 `PASS_TOKEN_SECRET`（服务端与插件同步更新）；
-> 3. 若验证码服务与 WordPress 同机部署，避免将 `SECRET_KEY` 明文写入可见于网络的配置文件。
+> 3. 若验证码服务与 WordPress 同机部署，避免将 `SECRET_KEY` 明文写入可见于网络的配置文件；
+> 4. **多站共用密钥时请用在线校验**：本地验签模式的 jti 一次性消费按站点独立记录，多个 WordPress 站共用同一 `PASS_TOKEN_SECRET` 时，同一 pass_token 可在 60 秒窗口内跨站重放。共用密钥的多站部署建议将 `PASS_TOKEN_SECRET` 留空，改用在线校验模式（服务端原子消费 jti，无此问题）。
 
 ---
 

@@ -178,21 +178,38 @@
   // 拦截发往 admin-ajax.php 的评论提交请求，先完成验证码再附加 cg_pass_token 发送。
   var TOKEN_CACHE_MS = 8000; // 缓存 token 最多 8 秒（pass_token 默认 60s 有效，防残留复用）
 
+  function bodyText(body) {
+    // 统一提取请求体文本（string / URLSearchParams / FormData）
+    var parts = [];
+    if (typeof body === 'string') {
+      parts.push(body);
+    } else if (body && typeof body.entries === 'function') {
+      try {
+        for (var pair of body.entries()) {
+          parts.push(pair[0] + '=' + pair[1]);
+        }
+      } catch (e) {}
+    }
+    return parts.join('&');
+  }
+
   function isCommentAjaxRequest(url, body) {
     if (!url || String(url).indexOf('admin-ajax.php') === -1) {
       return false;
     }
-    var s = '';
-    if (typeof body === 'string') {
-      s = body;
-    } else if (body && typeof body.get === 'function') { // URLSearchParams / FormData
-      try { s = body.get('action') || ''; } catch (e) {}
-    }
+    var s = bodyText(body);
     // 已携带 token（表单序列化场景）直接放行，避免重复验证
     if (s.indexOf('cg_pass_token') !== -1) {
       return false;
     }
     return s.indexOf('comment') !== -1 || /action=[^&]*comment/i.test(s);
+  }
+
+  // 是否为真实评论提交（而非"点赞评论"等仅含 comment 字样、字段名不同的请求）
+  function isCommentSubmit(body) {
+    var s = bodyText(body);
+    return s.indexOf('comment_post_ID') !== -1 ||
+      (/action=[^&]*comment/i.test(s) && s.indexOf('comment=') !== -1);
   }
 
   function appendTokenToBody(body, token) {
@@ -263,8 +280,12 @@
         ensureCaptchaToken(function (token) {
           if (token) {
             origSend.call(xhr, appendTokenToBody(originalBody, token));
+          } else if (isCommentSubmit(originalBody)) {
+            // 真实评论提交：验证失败/服务不可用时 fail-closed，不发送
+          } else {
+            // 非评论提交（如"点赞评论"等仅含 comment 字样）：放行，避免功能损坏
+            origSend.call(xhr, originalBody);
           }
-          // token 为空（验证失败/服务不可用）：不发送，保持 fail-closed
         });
         return;
       }
@@ -281,13 +302,17 @@
       if (isCommentAjaxRequest(url, body)) {
         return new Promise(function (resolve, reject) {
           ensureCaptchaToken(function (token) {
-            if (!token) {
+            if (token) {
+              var newInit = Object.assign({}, init || {});
+              newInit.body = appendTokenToBody(body, token);
+              origFetch.call(window, input, newInit).then(resolve, reject);
+            } else if (isCommentSubmit(body)) {
+              // 真实评论提交：fail-closed
               reject(new Error('captcha failed'));
-              return;
+            } else {
+              // 非评论提交：放行原请求
+              origFetch.call(window, input, init).then(resolve, reject);
             }
-            var newInit = Object.assign({}, init || {});
-            newInit.body = appendTokenToBody(body, token);
-            origFetch.call(window, input, newInit).then(resolve, reject);
           });
         });
       }
