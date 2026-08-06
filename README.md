@@ -76,28 +76,31 @@ python3 app.py
 | http://127.0.0.1:8080/api/v1/health | 健康检查 |
 | http://127.0.0.1:8080/api/v1/docs | API 文档（JSON） |
 
-### Docker 部署
+### Docker 部署（推荐：直接拉取镜像）
+
+镜像已自动构建发布到 **GHCR**（`ghcr.io/chinachat/captcha_system`，多架构 amd64 / arm64 / armv7），无需 clone 仓库或本地构建：
 
 ```bash
-cd captcha_system
-git pull origin main
+# ① 拉取 compose 文件与凭据模板（无需克隆整个仓库）
+curl -O https://raw.githubusercontent.com/chinachat/captcha_system/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/chinachat/captcha_system/main/.env.example
 
-# ① 配置生产凭据（.env 不入库，git pull 永不冲突）
+# ② 配置生产凭据
 cp .env.example .env
 # 编辑 .env 填入 SECRET_KEY / ADMIN_PASS / DEFAULT_API_KEY
 # 生成密钥：openssl rand -hex 32
+# （凭据缺失或为空时 compose 直接报错，防止空凭据上线）
 
-# ② 自动探测国内/国际基础镜像源后构建
-./build.sh
-
-# ③ 启动
+# ③ 启动（自动拉取镜像）
 docker compose up -d captcha
 docker compose logs -f captcha
+
+# 更新到最新镜像
+docker compose pull && docker compose up -d
 ```
 
-- 也可直接 `docker compose up -d --build`（默认国内 daocloud 基础镜像源）
-- 手动指定基础镜像：`BASE_IMAGE=python:3.12-slim docker compose up -d --build`
-- **镜像源自动选择**：`build.sh` 探测 daocloud → 阿里云 → Docker Hub；镜像内自动探测网络环境，apt 用阿里云源 / pip 用清华源（国际网络自动用官方源）
+- 国内拉取较慢时可为 docker 配置镜像加速器，或改用下方本地构建模式
+- 本地构建（开发/无外网拉取场景）：`./build.sh`（自动探测 daocloud → 阿里云 → Docker Hub 基础镜像源，镜像内 apt/pip 自动切换国内源）后 `docker compose up -d --build`
 
 ---
 

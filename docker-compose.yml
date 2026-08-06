@@ -2,13 +2,13 @@ version: "3.8"
 
 services:
   captcha:
-    build:
-      context: .
-      # 基础镜像源自动选择：默认国内 daocloud；可用 build.sh 或
-      # 设置环境变量 BASE_IMAGE=registry.cn-hangzhou.aliyuncs.com/library/python:3.12-slim
-      # 或 BASE_IMAGE=python:3.12-slim（官方 Docker Hub）覆盖
-      args:
-        BASE_IMAGE: ${BASE_IMAGE:-docker.m.daocloud.io/library/python:3.12-slim}
+    # 直接拉取 GHCR 预构建镜像（多架构 amd64/arm64/armv7，无需本地构建）。
+    # 本地构建模式：注释掉 image 行，改回如下 build 配置后 docker compose up -d --build：
+    # build:
+    #   context: .
+    #   args:
+    #     BASE_IMAGE: ${BASE_IMAGE:-docker.m.daocloud.io/library/python:3.12-slim}
+    image: ghcr.io/chinachat/captcha_system:latest
     ports:
       - "${CAPTCHA_PORT:-8080}:8080"
     environment:
