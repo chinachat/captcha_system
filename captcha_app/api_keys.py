@@ -38,19 +38,30 @@ def ensure_demo_key() -> str:
         (key, "演示页 Key（自动轮换）", now(), "仅供演示页使用，受限流保护"),
     )
     conn.commit()
+    _demo_key_cache["key"] = key
+    _demo_key_cache["at"] = time.time()
     return key
 
 
+# 演示 Key 短缓存：避免每个页面请求都查库；TTL 兜底，后台删除/禁用后最多 N 秒生效
+_demo_key_cache = {"key": None, "at": 0.0}
+_DEMO_KEY_CACHE_TTL = 15
+
+
 def get_demo_key() -> str:
-    """获取当前演示 Key；不存在（被删除）时重新生成。"""
+    """获取当前演示 Key；不存在（被删除）时重新生成。结果缓存 _DEMO_KEY_CACHE_TTL 秒。"""
+    now_t = time.time()
+    if _demo_key_cache["key"] and (now_t - _demo_key_cache["at"]) < _DEMO_KEY_CACHE_TTL:
+        return _demo_key_cache["key"]
     conn = get_db()
     row = conn.execute(
         "SELECT key FROM api_keys WHERE key LIKE ? ORDER BY created_at DESC LIMIT 1",
         (DEMO_PREFIX + "%",),
     ).fetchone()
-    if row:
-        return row["key"]
-    return ensure_demo_key()
+    key = row["key"] if row else ensure_demo_key()
+    _demo_key_cache["key"] = key
+    _demo_key_cache["at"] = now_t
+    return key
 
 def check_api_key(key):
     if not key:

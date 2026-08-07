@@ -252,7 +252,8 @@
 
   /* ===== 三种验证码 ===== */
   .caps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  @media (max-width: 920px) { .caps { grid-template-columns: 1fr; } }
+  @media (max-width: 980px) { .caps { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .caps { grid-template-columns: 1fr; } }
   .cap-card {
     background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 20px; display: flex; flex-direction: column; gap: 12px;
@@ -720,7 +721,9 @@ let bgCtx, bgW, bgH, bgPts = [];
   function resize() {
     bgW = canvas.width = innerWidth;
     bgH = canvas.height = innerHeight;
-    bgPts = Array.from({ length: 64 }, () => ({
+    // 按屏面积自适应粒子数，减少低端设备 O(n²) 连线计算
+    const count = Math.max(28, Math.min(52, Math.round((innerWidth * innerHeight) / 34000)));
+    bgPts = Array.from({ length: count }, () => ({
       x: Math.random() * bgW, y: Math.random() * bgH,
       vx: (Math.random() - 0.5) * 0.35, vy: (Math.random() - 0.5) * 0.35,
       r: Math.random() * 1.6 + 0.6
@@ -729,9 +732,15 @@ let bgCtx, bgW, bgH, bgPts = [];
   resize();
   addEventListener("resize", resize);
   let running = true;
+  let lastTs = 0;
   document.addEventListener("visibilitychange", () => { running = !document.hidden; });
-  function frame() {
-    if (!running) { requestAnimationFrame(frame); return; }
+  function frame(ts) {
+    // 限帧 ~30fps，省 CPU；后台标签页不空转
+    if (!running || (ts - lastTs) < 33) {
+      requestAnimationFrame(frame);
+      return;
+    }
+    lastTs = ts;
     const c = themeColors();
     bgCtx.clearRect(0, 0, bgW, bgH);
     for (const p of bgPts) {
@@ -905,8 +914,11 @@ function refreshCanvasTheme() { /* 下一帧自动应用新主题色 */ }
   const c = document.getElementById("cap-slider");
   const x = c.getContext("2d");
   let t = 0;
+  let visible = true;
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   function capFrame() {
+    // 离开视口即暂停，省 CPU
+    if (!visible || reduced) return;
     const w = c.width = c.clientWidth * 2, h = c.height = c.clientHeight * 2;
     const cc = themeColors();
     const g = x.createLinearGradient(0, 0, w, h);
@@ -923,7 +935,14 @@ function refreshCanvasTheme() { /* 下一帧自动应用新主题色 */ }
     x.strokeStyle = cc.edge; x.lineWidth = 2.5;
     x.strokeRect(gx, gy, gw, gh);
     t++;
-    if (!reduced) requestAnimationFrame(capFrame);
+    requestAnimationFrame(capFrame);
+  }
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(function (entries) {
+      const now = entries[0].isIntersecting;
+      if (now && !visible) { visible = true; requestAnimationFrame(capFrame); }
+      visible = now;
+    }, { threshold: 0 }).observe(c);
   }
   capFrame();
 })();

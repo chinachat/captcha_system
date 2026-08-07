@@ -1,4 +1,5 @@
 """HTTP 请求处理"""
+import gzip
 import hmac
 import ipaddress
 import json
@@ -87,8 +88,16 @@ class CaptchaHandler(BaseHTTPRequestHandler):
             body = body.encode("utf-8")
         elif body is None:
             body = b""
+        # gzip 文本载荷（首页大 HTML 提速明显）；Accept-Encoding 不包含 gzip 时原样发送。
+        enc = None
+        if body and content_type.startswith(("text/", "application/json", "application/javascript", "application/xml")):
+            if "gzip" in self.headers.get("Accept-Encoding", ""):
+                body = gzip.compress(body, 6)
+                enc = "gzip"
         self.send_response(code)
         self.send_header("Content-Type", content_type)
+        if enc:
+            self.send_header("Content-Encoding", enc)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
