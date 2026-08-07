@@ -1137,7 +1137,7 @@ class CaptchaHandler(BaseHTTPRequestHandler):
 
     def _serve_landing(self):
         """项目首页（科技感落地页，双主题，内置登录/注册）。"""
-        self._serve_template("landing.html")
+        self._serve_template("landing.html", replace_key=True)
 
     def _serve_demo(self):
         self._serve_template("demo.html", replace_key=True)

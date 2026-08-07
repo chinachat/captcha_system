@@ -264,6 +264,11 @@
   .cap-card p { font-size: 13px; color: var(--muted); flex: 1; }
   .cap-card p b { color: var(--text); font-weight: 600; }
   .cap-demo { border-radius: 10px; overflow: hidden; border: 1px solid var(--border); height: 118px; position: relative; background: var(--bg2); }
+  .cap-demo-btn { align-self: flex-start; margin-top: 2px; }
+  .cap-result { font-family: var(--mono); font-size: 11.5px; color: var(--muted); min-height: 16px; word-break: break-all; line-height: 1.5; }
+  .cap-result.ok { color: var(--ok); }
+  .cap-result.err { color: var(--err); }
+  .cap-token { margin: 6px 0 0; font-family: var(--mono); font-size: 10.5px; color: var(--accent2-strong); background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; word-break: break-all; white-space: pre-wrap; }
 
   /* 点选演示 */
   .click-demo { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 12px; }
@@ -522,6 +527,8 @@
         <h3>滑动拼图</h3>
         <div class="cap-demo"><canvas id="cap-slider"></canvas></div>
         <p>拖拽拼图对齐缺口。轨迹缺失、线性滑动、超时超速均判异常。支持 <b>Redis 共享失败锁定</b>，多实例防刷。</p>
+        <button class="btn btn-primary cap-demo-btn" onclick="runDemo('slider', this)">实时体验 →</button>
+        <div class="cap-result" id="capResult-slider"></div>
       </div>
       <div class="cap-card reveal">
         <div class="tag">CLICK</div>
@@ -532,6 +539,8 @@
         </div></div>
         <p class="click-order" id="clickOrder">按顺序点击：D → A → F（试试看）</p>
         <p>按序点击指定字符。顺序错误、间隔过短、坐标偏移均被拒绝。点击试试。</p>
+        <button class="btn btn-primary cap-demo-btn" onclick="runDemo('click', this)">实时体验 →</button>
+        <div class="cap-result" id="capResult-click"></div>
       </div>
       <div class="cap-card reveal">
         <div class="tag">TEXT</div>
@@ -540,6 +549,8 @@
           <span class="text-char">K</span><span class="text-char">3</span><span class="text-char">p</span><span class="text-char">9</span>
         </div></div>
         <p>经典字符识别，兼容旧接入方。验证码一次性使用，<b>120 秒</b>自动过期。</p>
+        <button class="btn btn-primary cap-demo-btn" onclick="openTextDemo()">实时体验 →</button>
+        <div class="cap-result" id="capResult-text"></div>
       </div>
     </div>
   </section>
@@ -634,6 +645,28 @@
       <button class="m-close" onclick="closeModal()">✕</button>
     </div>
     <div id="mBody"></div>
+  </div>
+</div>
+
+<!-- ===== 文字验证码实时体验弹窗 ===== -->
+<div class="modal-mask" id="textDemoMask" onclick="if(event.target===this)closeTextDemo()">
+  <div class="modal">
+    <div class="m-head">
+      <h3>文字验证 · 实时体验</h3>
+      <button class="m-close" onclick="closeTextDemo()">✕</button>
+    </div>
+    <div class="field">
+      <label>验证码</label>
+      <div class="captcha-row">
+        <input id="textDemoInput" placeholder="输入图片中的字符" autocomplete="off">
+        <div class="cap-img-wrap" id="textDemoWrap" title="点击刷新" onclick="loadTextDemo()">
+          <img id="textDemoImg" alt="验证码" style="display:none">
+          <span id="textDemoStatus">验证码加载中…</span>
+        </div>
+      </div>
+    </div>
+    <div class="m-msg" id="textDemoMsg"></div>
+    <button class="btn btn-primary m-submit" onclick="submitTextDemo()">验 证</button>
   </div>
 </div>
 
@@ -1162,6 +1195,9 @@ async function doLogin() {
   mMsg("验证中…", false);
   const r = await apiReq(API_BASE + "/api/v1/admin/login", body);
   if (r.ok && r.token) {
+    localStorage.setItem("admin_token", r.token);
+    localStorage.setItem("cg_role", r.role || "admin");
+    localStorage.setItem("cg_user", r.user || "");
     mMsg("登录成功，进入管理后台…", false);
     setTimeout(() => location.href = API_BASE + "/admin", 600);
     return;
@@ -1187,6 +1223,9 @@ async function doLogin2fa() {
   mMsg("验证中…", false);
   const r = await apiReq(API_BASE + "/api/v1/admin/login/2fa", { pre_token: m2faToken, code });
   if (r.ok && r.token) {
+    localStorage.setItem("admin_token", r.token);
+    localStorage.setItem("cg_role", r.role || "admin");
+    localStorage.setItem("cg_user", r.user || "");
     mMsg("验证通过，进入管理后台…", false);
     setTimeout(() => location.href = API_BASE + "/admin", 600);
   } else {
@@ -1219,13 +1258,140 @@ async function doRegister() {
 }
 
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape" && modal.classList.contains("show")) closeModal();
-  if (e.key === "Enter" && modal.classList.contains("show")) {
-    if (mMode === "login" && !m2faToken) doLogin();
-    else if (m2faToken) doLogin2fa();
-    else doRegister();
+  if (e.key === "Escape") {
+    if (modal.classList.contains("show")) closeModal();
+    if (document.getElementById("textDemoMask").classList.contains("show")) closeTextDemo();
+  }
+  if (e.key === "Enter") {
+    if (modal.classList.contains("show")) {
+      if (mMode === "login" && !m2faToken) doLogin();
+      else if (m2faToken) doLogin2fa();
+      else doRegister();
+    } else if (document.getElementById("textDemoMask").classList.contains("show")) {
+      submitTextDemo();
+    }
   }
 });
+
+/* ================= 01 版块：实时验证体验（真实 API + CaptchaSDK） ================= */
+const DEMO_API_KEY = "{{API_KEY}}";
+
+let _sdkPromise = null;
+
+function loadCaptchaSDK() {
+  if (window.CaptchaSDK) return Promise.resolve();
+  if (_sdkPromise) return _sdkPromise;
+  _sdkPromise = new Promise(function (resolve, reject) {
+    const s = document.createElement("script");
+    s.src = API_BASE + "/static/captcha-sdk.js";
+    s.async = true;
+    s.onload = resolve;
+    s.onerror = function () { _sdkPromise = null; reject(new Error("验证码 SDK 加载失败")); };
+    document.head.appendChild(s);
+  });
+  return _sdkPromise;
+}
+
+function setCapResult(id, ok, html) {
+  const el = document.getElementById("capResult-" + id);
+  if (!el) return;
+  el.className = "cap-result " + (ok ? "ok" : "err");
+  el.innerHTML = html;
+}
+
+function capTokenHtml(token) {
+  return "✓ 验证通过 · pass_token<pre class=\"cap-token\">" + token + "</pre><span>一次性消费（jti），有效期内仅可使用一次</span>";
+}
+
+async function runDemo(type, btn) {
+  if (btn) btn.disabled = true;
+  setCapResult(type, false, "加载验证码…");
+  try {
+    await loadCaptchaSDK();
+    const passToken = await window.CaptchaSDK.verify({
+      apiKey: DEMO_API_KEY,
+      type: type,
+      baseUrl: API_BASE
+    });
+    setCapResult(type, true, capTokenHtml(passToken));
+  } catch (e) {
+    setCapResult(type, false, "✗ " + esc((e && e.message) || "验证失败"));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* 文字验证码（SDK 未内置，走独立小弹窗） */
+let textDemoToken = "";
+
+async function loadTextDemo() {
+  const img = document.getElementById("textDemoImg");
+  const status = document.getElementById("textDemoStatus");
+  textDemoToken = "";
+  if (!img || !status) return;
+  img.style.display = "none";
+  status.style.display = "inline";
+  status.textContent = "加载中…";
+  try {
+    const res = await fetch(API_BASE + "/api/v1/captcha/text/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": DEMO_API_KEY }
+    });
+    const json = await res.json();
+    if (json.ok && json.data) {
+      textDemoToken = json.data.token || "";
+      img.src = "data:image/png;base64," + json.data.image;
+      img.style.display = "block";
+      status.style.display = "none";
+    } else {
+      status.textContent = "加载失败，点击重试";
+    }
+  } catch (e) {
+    status.textContent = "加载失败，点击重试";
+  }
+}
+
+function openTextDemo() {
+  const msg = document.getElementById("textDemoMsg");
+  msg.className = "m-msg";
+  msg.textContent = "";
+  document.getElementById("textDemoInput").value = "";
+  document.getElementById("textDemoMask").classList.add("show");
+  loadTextDemo();
+}
+function closeTextDemo() {
+  document.getElementById("textDemoMask").classList.remove("show");
+}
+
+async function submitTextDemo() {
+  const msg = document.getElementById("textDemoMsg");
+  const code = document.getElementById("textDemoInput").value.trim();
+  if (!code) { msg.className = "m-msg err"; msg.textContent = "请输入验证码"; return; }
+  if (!textDemoToken) { msg.className = "m-msg err"; msg.textContent = "验证码未加载，请点击刷新"; return; }
+  msg.className = "m-msg";
+  msg.textContent = "验证中…";
+  try {
+    const res = await fetch(API_BASE + "/api/v1/captcha/text/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": DEMO_API_KEY },
+      body: JSON.stringify({ token: textDemoToken, code: code })
+    });
+    const json = await res.json();
+    if (json.ok && json.pass_token) {
+      setCapResult("text", true, capTokenHtml(json.pass_token));
+      msg.className = "m-msg ok";
+      msg.textContent = "✓ 验证通过";
+      setTimeout(closeTextDemo, 1200);
+    } else {
+      msg.className = "m-msg err";
+      msg.textContent = json.msg || "验证码错误";
+      loadTextDemo();
+    }
+  } catch (e) {
+    msg.className = "m-msg err";
+    msg.textContent = "网络错误，请重试";
+  }
+}
 </script>
 </body>
 </html>
