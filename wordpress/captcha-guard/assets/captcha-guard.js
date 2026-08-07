@@ -264,11 +264,16 @@
     function flushQueue(token) {
       var q = verifyQueue;
       verifyQueue = null;
-      if (token) {
-        cachedToken = token;
-        cachedTokenAt = Date.now();
+      if (!token) {
+        (q || []).forEach(function (cb) { cb(null); });
+        return;
       }
-      (q || []).forEach(function (cb) { cb(token); });
+      // pass_token 是服务端一次性消费（jti）的凭证：同一 token 只能被一个请求使用。
+      // 队首请求消费该 token；其余排队请求各自重新完成一次验证（串行弹出，避免重复弹窗并发）。
+      // 同时不再写入 cachedToken，防止同一提交重试/后续请求复用已消费的 token 导致 403。
+      var first = q && q.length ? q.shift() : null;
+      if (first) first(token);
+      (q || []).forEach(function (cb) { ensureCaptchaToken(cb); });
     }
   }
 
