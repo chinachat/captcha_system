@@ -77,6 +77,9 @@
   // 已通过验证的表单（一次性标志）：重放事件放行，避免二次拦截
   var verifiedSet = (typeof WeakSet !== 'undefined') ? new WeakSet() : null;
 
+  // 点击通道通过验证后即将触发的默认 submit：放行一次，避免二次弹验证码
+  var pendingSubmitForm = null;
+
   // 验证码 token 共享缓存（表单通道与请求通道共用，避免重复弹验证码）
   var cachedToken = null;
   var cachedTokenAt = 0;
@@ -125,7 +128,8 @@
     if (!f || !f.matches) {
       return;
     }
-    if (isVerified(f)) {
+    if (isVerified(f) || f === pendingSubmitForm) {
+      pendingSubmitForm = null;
       consumeVerified(f);
       return;
     }
@@ -167,6 +171,9 @@
     e.stopPropagation();
     runVerification(form, function () {
       markVerified(form);
+      // 重放点击会触发表单默认 submit；提前标记该表单，让随后进入
+      // submit 通道的请求直接放行，避免同一表单二次弹验证码。
+      pendingSubmitForm = form;
       // 重放点击：主题的点击处理器执行 Ajax 提交（表单已含 token）；
       // 无处理器时浏览器默认提交表单 → submit 通道放行
       btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
