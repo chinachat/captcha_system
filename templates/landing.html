@@ -157,8 +157,11 @@
   html[data-theme="light"] .theme-btn .icon-moon { display: block; }
 
   /* ===== Hero ===== */
-  .hero { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; padding: 92px 0 72px; min-height: calc(100vh - var(--nav-h) - 40px); }
-  @media (max-width: 920px) { .hero { grid-template-columns: 1fr; padding: 56px 0; } }
+  .hero { display: grid; grid-template-columns: 1fr; gap: 48px; padding: 72px 0 40px; min-height: calc(100vh - var(--nav-h) - 40px); align-content: center; }
+  @media (max-width: 920px) { .hero { padding: 40px 0; } }
+  .hero-text { max-width: 720px; }
+  .hero-demos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 980px) { .hero-demos { grid-template-columns: 1fr; } }
 
   .hero-tag {
     font-family: var(--mono); font-size: 12.5px; color: var(--accent2-strong);
@@ -203,7 +206,7 @@
   .demo-head { display: flex; justify-content: space-between; align-items: center; font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 12px; }
   .demo-head .stat { color: var(--ok); }
   .slider-canvas-wrap { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
-  #slider-canvas { display: block; width: 100%; height: 168px; }
+  #slider-canvas { display: block; width: 100%; height: 100%; }
   .slider-bar {
     margin-top: 14px; position: relative; height: 44px;
     background: var(--bar-bg); border: 1px solid var(--border-bright);
@@ -265,15 +268,28 @@
   .cap-card p { font-size: 13px; color: var(--muted); flex: 1; }
   .cap-card p b { color: var(--text); font-weight: 600; }
   .cap-demo { border-radius: 10px; overflow: hidden; border: 1px solid var(--border); height: 118px; position: relative; background: var(--bg2); }
+  .cap-demo canvas { display: block; width: 100%; height: 100%; }
   .cap-demo-btn { align-self: flex-start; margin-top: 2px; }
   .cap-result { font-family: var(--mono); font-size: 11.5px; color: var(--muted); min-height: 16px; word-break: break-all; line-height: 1.5; }
   .cap-result.ok { color: var(--ok); }
   .cap-result.err { color: var(--err); }
   .cap-token { margin: 6px 0 0; font-family: var(--mono); font-size: 10.5px; color: var(--accent2-strong); background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; word-break: break-all; white-space: pre-wrap; }
 
+  /* 01 版块能力卡片（精简：API 端点 + 特性） */
+  .cap-feat {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; display: flex; flex-direction: column; gap: 12px;
+    transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+  }
+  .cap-feat:hover { border-color: var(--border-bright); transform: translateY(-3px); box-shadow: var(--shadow); }
+  .cap-feat .tag { font-family: var(--mono); font-size: 11px; color: var(--accent2-strong); letter-spacing: 1px; }
+  .cap-feat code { font-family: var(--mono); font-size: 12px; color: var(--accent2-strong); word-break: break-all; }
+  .cap-feat p { font-size: 13px; color: var(--muted); }
+  .cap-feat p b { color: var(--text); font-weight: 600; }
+
   /* 点选演示 */
-  .click-demo { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 12px; }
-  .click-cell { border: 1px solid var(--border); border-radius: 8px; height: 60px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 20px; color: var(--muted); cursor: pointer; transition: all 0.15s; background: color-mix(in srgb, var(--bg) 60%, transparent); }
+  .click-demo { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px; height: 100%; box-sizing: border-box; }
+  .click-cell { border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 18px; color: var(--muted); cursor: pointer; transition: all 0.15s; background: color-mix(in srgb, var(--bg) 60%, transparent); }
   .click-cell:hover { border-color: var(--border-bright); }
   .click-cell.hit { border-color: var(--ok); color: var(--ok); box-shadow: 0 0 14px color-mix(in srgb, var(--ok) 35%, transparent); }
   .click-cell.miss { border-color: var(--err); color: var(--err); box-shadow: 0 0 14px color-mix(in srgb, var(--err) 30%, transparent); }
@@ -471,7 +487,7 @@
 
   <!-- ===== HERO ===== -->
   <header class="hero">
-    <div>
+    <div class="hero-text">
       <div class="hero-tag"><span class="live-dot"></span>PURE PYTHON · 零 Web 框架 · 开箱即用</div>
       <h1>让机器<br>自己<span class="grad">分辨真假</span></h1>
       <p class="sub">动态验证码管理系统 — 纯标准库实现的服务端，滑动 / 点选 / 文字三种验证码，内置限流与失败锁定。支持 <code>SQLite</code> / <code>PostgreSQL</code> 双存储、<code>Docker</code> 一键部署、<code>WordPress</code> 插件接入。</p>
@@ -489,21 +505,44 @@
       </div>
     </div>
 
-    <!-- 滑块验证码实时演示（纯前端模拟） -->
-    <div class="demo-card">
-      <div class="demo-head">
-        <span>demo :: slider captcha</span>
-        <span class="stat">● 实时演示</span>
+    <!-- 三种验证码并排实时演示（滑块可拖拽，均为前端模拟；点击"实时体验"走真实 API） -->
+    <div class="hero-demos">
+      <div class="cap-card">
+        <div class="tag">SLIDER</div>
+        <h3>滑动拼图</h3>
+        <div class="cap-demo"><canvas id="slider-canvas"></canvas></div>
+        <div class="slider-bar" id="sliderBar">
+          <div class="slider-fill" id="sliderFill"></div>
+          <div class="slider-thumb" id="sliderThumb">→</div>
+          <div class="slider-hint" id="sliderHint">按住滑块，拖到缺口位置</div>
+        </div>
+        <div class="slider-msg" id="sliderMsg"></div>
+        <p>拖拽拼图对齐缺口。轨迹缺失、线性滑动、超时超速均判异常。</p>
+        <button class="btn btn-primary cap-demo-btn" onclick="runDemo('slider', this)">实时体验 →</button>
+        <div class="cap-result" id="capResult-slider"></div>
       </div>
-      <div class="slider-canvas-wrap">
-        <canvas id="slider-canvas"></canvas>
+      <div class="cap-card">
+        <div class="tag">CLICK</div>
+        <h3>点选验证</h3>
+        <div class="cap-demo"><div class="click-demo" id="clickDemo">
+          <div class="click-cell">A</div><div class="click-cell">B</div><div class="click-cell">C</div>
+          <div class="click-cell">D</div><div class="click-cell">E</div><div class="click-cell">F</div>
+        </div></div>
+        <p class="click-order" id="clickOrder">按顺序点击：D → A → F</p>
+        <p>按序点击指定字符。顺序错误、间隔过短、坐标偏移均被拒绝。</p>
+        <button class="btn btn-primary cap-demo-btn" onclick="runDemo('click', this)">实时体验 →</button>
+        <div class="cap-result" id="capResult-click"></div>
       </div>
-      <div class="slider-bar" id="sliderBar">
-        <div class="slider-fill" id="sliderFill"></div>
-        <div class="slider-thumb" id="sliderThumb">→</div>
-        <div class="slider-hint" id="sliderHint">按住滑块，拖到缺口位置</div>
+      <div class="cap-card">
+        <div class="tag">TEXT</div>
+        <h3>文字验证</h3>
+        <div class="cap-demo"><div class="text-demo" id="textDemo">
+          <span class="text-char">K</span><span class="text-char">3</span><span class="text-char">p</span><span class="text-char">9</span>
+        </div></div>
+        <p>经典字符识别，兼容旧接入方。验证码一次性使用，<b>120 秒</b>自动过期。</p>
+        <button class="btn btn-primary cap-demo-btn" onclick="openTextDemo()">实时体验 →</button>
+        <div class="cap-result" id="capResult-text"></div>
       </div>
-      <div class="slider-msg" id="sliderMsg"></div>
     </div>
   </header>
 
@@ -523,35 +562,20 @@
       <p>全部支持行为校验（轨迹 / 时序 / 点击顺序），通过后签发一次性 pass_token，防脚本、防重放。</p>
     </div>
     <div class="caps">
-      <div class="cap-card reveal">
-        <div class="tag">SLIDER</div>
-        <h3>滑动拼图</h3>
-        <div class="cap-demo"><canvas id="cap-slider"></canvas></div>
-        <p>拖拽拼图对齐缺口。轨迹缺失、线性滑动、超时超速均判异常。支持 <b>Redis 共享失败锁定</b>，多实例防刷。</p>
-        <button class="btn btn-primary cap-demo-btn" onclick="runDemo('slider', this)">实时体验 →</button>
-        <div class="cap-result" id="capResult-slider"></div>
+      <div class="cap-feat reveal">
+        <div class="tag">SLIDER · 滑动拼图</div>
+        <code>POST /api/v1/captcha/slider/generate / verify</code>
+        <p>轨迹采样、线性滑动检测、速度上限；支持 <b>Redis 共享失败锁定</b>，多实例防刷。</p>
       </div>
-      <div class="cap-card reveal">
-        <div class="tag">CLICK</div>
-        <h3>点选验证</h3>
-        <div class="cap-demo"><div class="click-demo" id="clickDemo">
-          <div class="click-cell">A</div><div class="click-cell">B</div><div class="click-cell">C</div>
-          <div class="click-cell">D</div><div class="click-cell">E</div><div class="click-cell">F</div>
-        </div></div>
-        <p class="click-order" id="clickOrder">按顺序点击：D → A → F（试试看）</p>
-        <p>按序点击指定字符。顺序错误、间隔过短、坐标偏移均被拒绝。点击试试。</p>
-        <button class="btn btn-primary cap-demo-btn" onclick="runDemo('click', this)">实时体验 →</button>
-        <div class="cap-result" id="capResult-click"></div>
+      <div class="cap-feat reveal">
+        <div class="tag">CLICK · 点选验证</div>
+        <code>POST /api/v1/captcha/click/generate / verify</code>
+        <p>按序点击指定字符。顺序错误、间隔过短、坐标偏移均被拒绝。</p>
       </div>
-      <div class="cap-card reveal">
-        <div class="tag">TEXT</div>
-        <h3>文字验证</h3>
-        <div class="cap-demo"><div class="text-demo" id="textDemo">
-          <span class="text-char">K</span><span class="text-char">3</span><span class="text-char">p</span><span class="text-char">9</span>
-        </div></div>
+      <div class="cap-feat reveal">
+        <div class="tag">TEXT · 文字验证</div>
+        <code>POST /api/v1/captcha/text/generate / verify</code>
         <p>经典字符识别，兼容旧接入方。验证码一次性使用，<b>120 秒</b>自动过期。</p>
-        <button class="btn btn-primary cap-demo-btn" onclick="openTextDemo()">实时体验 →</button>
-        <div class="cap-result" id="capResult-text"></div>
       </div>
     </div>
   </section>
@@ -822,7 +846,7 @@ function refreshCanvasTheme() { /* 下一帧自动应用新主题色 */ }
 
   function size() {
     W = canvas.width = canvas.clientWidth * 2;
-    canvas.height = 168 * 2;
+    canvas.height = (canvas.clientHeight || 118) * 2;
   }
   function draw() {
     const w = canvas.width, h = canvas.height;
@@ -907,44 +931,6 @@ function refreshCanvasTheme() { /* 下一帧自动应用新主题色 */ }
   });
   addEventListener("resize", () => { size(); reset(); });
   size(); reset();
-})();
-
-/* ================= 能力卡动画 ================= */
-(function () {
-  const c = document.getElementById("cap-slider");
-  const x = c.getContext("2d");
-  let t = 0;
-  let visible = true;
-  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  function capFrame() {
-    // 离开视口即暂停，省 CPU
-    if (!visible || reduced) return;
-    const w = c.width = c.clientWidth * 2, h = c.height = c.clientHeight * 2;
-    const cc = themeColors();
-    const g = x.createLinearGradient(0, 0, w, h);
-    g.addColorStop(0, cc.cardFrom); g.addColorStop(1, cc.cardTo);
-    x.fillStyle = g; x.fillRect(0, 0, w, h);
-    for (let i = 0; i < 140; i++) {
-      x.fillStyle = cc.noise + (Math.random() * 0.2) + ")";
-      x.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5);
-    }
-    const gw = 34 * 2, gh = 44 * 2, gy = h * 0.35;
-    const gx = (0.2 + 0.6 * (0.5 + 0.5 * Math.sin(t / 140))) * (w - gw);
-    x.fillStyle = cc.gap;
-    x.fillRect(gx, gy, gw, gh);
-    x.strokeStyle = cc.edge; x.lineWidth = 2.5;
-    x.strokeRect(gx, gy, gw, gh);
-    t++;
-    requestAnimationFrame(capFrame);
-  }
-  if ("IntersectionObserver" in window) {
-    new IntersectionObserver(function (entries) {
-      const now = entries[0].isIntersecting;
-      if (now && !visible) { visible = true; requestAnimationFrame(capFrame); }
-      visible = now;
-    }, { threshold: 0 }).observe(c);
-  }
-  capFrame();
 })();
 
 /* ================= 安全区：攻击拦截日志流（示例模拟） ================= */
