@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   captcha:
     # 直接拉取 GHCR 预构建镜像（多架构 amd64/arm64，无需本地构建；armv7 需本地 ./build.sh）。
