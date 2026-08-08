@@ -1345,7 +1345,8 @@ async function loadTextDemo() {
     const json = await res.json();
     if (json.ok && json.data) {
       textDemoToken = json.data.token || "";
-      img.src = "data:image/png;base64," + json.data.image;
+      // 服务端 b64_image() 返回完整 data URI，直接赋值；旧格式（纯 base64）兼容处理
+      img.src = json.data.image.startsWith("data:") ? json.data.image : "data:image/png;base64," + json.data.image;
       img.style.display = "block";
       status.style.display = "none";
     } else {
